@@ -295,7 +295,7 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
         <button type="button" data-mode="param" aria-pressed="true">数値で作る</button>
         <button type="button" data-mode="ellipse" aria-pressed="false">楕円法</button>
       </div>
-      <p class="note" id="ellipseNote" hidden>目と眉の間の楕円の上側の弧に、眉の上の縁を合わせます。白い○で楕円を動かし、◆で高さ、白い■で幅を変えます（向きは顔の横線に固定）。青緑の■（眉頭）と黄色の■（眉尻）を動かすと、楕円の幅も一緒に合わせ直します。</p>
+      <p class="note" id="ellipseNote" hidden>目と眉の間の横長の楕円に、眉の上の縁を沿わせます。上の縁は楕円の端から始まり、外側の端を越えて眉尻へ伸びます。白い○で楕円を動かし、◆で高さ、白い■で幅を変えます（向きは顔の横線に固定）。青緑の■で眉頭の線（下の縁の始まり）、黄色の■で眉尻の先を動かします。</p>
       <div class="chips" id="presets"></div>
       <div class="side-row">
         <label class="chip"><input type="checkbox" id="linked" checked>左右を同じ形にする</label>
@@ -555,29 +555,30 @@ function edge(A, C, B, kaku, n = 20) {
   return out;
 }
 
-// 楕円法：目と眉の間に置いた楕円の上側の弧に、眉の下の縁を沿わせる
-// 楕円の向きは顔の横線（両目尻を結ぶ線）に固定し、大きさと位置だけを変える
+// 楕円法（スクールの図に合わせた形）：
+// ・楕円は目と眉の間に置く横長の楕円（高さ≒横幅×0.47、下端≒上まぶた）。向きは顔の横線に固定
+// ・眉の上の縁は楕円の内側の端から始まり、上側の弧に沿って外へ流れ、楕円の外側の端を越えて眉尻へ伸びる
+// ・眉の下の縁は眉頭の線（x0）から始まり、上の縁とほぼ平行に楕円の内側を通って眉尻で閉じる
+// 楕円の状態 { c, a, b, x0, x1, y1 }：a=横の半径, b=縦の半径, x0=眉頭の線, (x1, y1)=眉尻の先（楕円の中心から測る）
+// 図から読み取った比率。ただし眉頭の線の位置は図では −0.52a だが、実際の顔では左右の眉頭が中心で重なるため
+// 初期値は −0.8a にしている（眉頭の線より内側へ 0.2a だけ伸びる。青緑の■で図の比率まで広げられる）
+const ELL = { ratio: .47, head: -.8, tail: 1.2, tipY: -.05, leave: .82 };
 function initEllipse(pts) {
   const { u, up } = faceAxes(pts);
   const res = {};
   for (const side of ['L', 'R']) {
     const p = pts[side], out = side === 'L' ? mul(u, -1) : u;
-    // 楕円は目と眉の間に置く：下端＝目の上のふち、横は眉頭の交点から ◎ までを少し余らせて覆う
     const m = mapping(pts, side);
     const h = m.headTarget;
     const t = m.tailTarget || add(p.eye, mul(out, len(sub(p.eye, p.inner)) * .3));
     const span = Math.max(12, dot(sub(t, h), out));
-    const a = span / 2 * 1.15;
-    const mid = add(h, mul(out, span / 2));
-    const lidH = dot(sub(p.lid, mid), up);          // 目の上のふちの高さ（mid を 0 とする）
-    // 眉の上の縁を弧に乗せるので、眉頭の端で弧が「眉頭の高さ＋眉の太さ」を通るよう縦の半径を決める
-    // 端（x=±span/2）での弧の高さは b×√(1−(1/1.15)²)
-    const endK = Math.sqrt(1 - (1 / 1.15) ** 2);
-    const th = (state.design ? state.design.prm[side].thick : .17) * span;
-    const b = Math.max(3, (th - lidH) / (1 + endK));
-    const c = add(mid, mul(up, lidH + b));
-    // x0・x1 は眉頭・眉尻の位置（楕円の中心から外向きに測った横の距離）。楕円を動かすと眉もついてくる
-    res[side] = { c, a, b, x0: -span / 2, x1: span / 2 };
+    // 眉頭の線〜眉尻の目安（◎）の間が、図の比率（中心から −0.52a 〜 +1.2a）になるよう横の半径を決める
+    const a = span / (ELL.tail - ELL.head);
+    const b = a * ELL.ratio;
+    const cx = add(h, mul(out, -ELL.head * a));
+    const lidH = dot(sub(p.lid, cx), up);
+    const c = add(cx, mul(up, lidH + b));             // 楕円の下端を上まぶたの高さに置く
+    res[side] = { c, a, b, x0: ELL.head * a, x1: ELL.tail * a, y1: ELL.tipY * b };
   }
   return res;
 }
@@ -585,29 +586,52 @@ function initEllipse(pts) {
 function ellipseBrowShape(pts, side, prm) {
   const f = browFrame(pts, side, prm);
   const e = state.ellipse[side];
-  const lim = e.a * .985;
-  const x0 = Math.max(-lim, Math.min(lim, e.x0));
-  let x1 = Math.max(-lim, Math.min(lim, e.x1));
-  if (x1 - x0 < 6) x1 = Math.min(lim, x0 + 6);
-  const Lb = x1 - x0, th = prm.thick * Lb;
-  const arc = x => e.b * Math.sqrt(Math.max(0, 1 - (x / e.a) ** 2));
   const loc = (x, y) => add(e.c, add(mul(f.out, x), mul(f.up, y)));
+  const arc = x => e.b * Math.sqrt(Math.max(0, 1 - (x / e.a) ** 2));
   const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
-  const N = 40, lower = [], upper = [];
-  for (let i = 0; i <= N; i++) {
-    const s = i / N, x = x0 + Lb * s, y = arc(x);
-    // 眉の上の縁を弧に乗せ、太さは楕円の内向き（法線の逆）に取る。眉尻へ向けて細くする
-    const n = norm({ x: x / (e.a * e.a), y: y / (e.b * e.b) });
-    const t = th * (1 - (1 - prm.taper) * ease((s - .5) / .5));
-    upper.push(loc(x, y));
-    lower.push(loc(x - n.x * t, y - n.y * t));
+  // 上の縁：楕円の内側の端（x=−a）から弧に沿い、xP で弧を離れて眉尻の先へなめらかにつなぐ
+  const x1 = Math.max(-e.a * .5, e.x1);
+  const xP = Math.min(e.a * ELL.leave, x1);
+  const up = [];
+  const NA = 48;
+  for (let i = 0; i <= NA; i++) { const x = -e.a + (xP + e.a) * i / NA; up.push({ x, y: arc(x) }); }
+  if (x1 > xP + 1) {
+    const P0 = { x: xP, y: arc(xP) };
+    const slope = -e.b * xP / (e.a * e.a * Math.max(.05, Math.sqrt(1 - (xP / e.a) ** 2)));
+    const d = x1 - xP;
+    const T0 = { x: d, y: slope * d }, P1 = { x: x1, y: e.y1 }, T1 = sub(P1, P0);
+    const NT = 16;
+    for (let i = 1; i <= NT; i++) {
+      const t = i / NT, t2 = t * t, t3 = t2 * t;
+      up.push(add(add(mul(P0, 2 * t3 - 3 * t2 + 1), mul(T0, t3 - 2 * t2 + t)), add(mul(P1, -2 * t3 + 3 * t2), mul(T1, t3 - t2))));
+    }
   }
-  const tail = add(mul(add(lower[N], upper[N]), .5), mul(f.out, th * prm.taper * .4));
-  const head = add(mul(add(lower[0], upper[0]), .5), mul(f.out, -th * .1));
+  // 下の縁：眉頭の線（x0）から、上の縁の内向きの法線方向に太さぶん下げる。太さは眉尻へ向けて細くする
+  const x0 = Math.max(-e.a * .98, Math.min(e.x0, x1 - 6));
+  const th = prm.thick * 2.2 * e.b;
+  const low = [];
+  let headUp = null;
+  for (let i = 0; i < up.length; i++) {
+    const q = up[i];
+    if (q.x < x0) continue;
+    const a0 = up[Math.max(0, i - 1)], a1 = up[Math.min(up.length - 1, i + 1)];
+    const tg = norm(sub(a1, a0));
+    const n = { x: tg.y, y: -tg.x };                  // 進む向きの右手側＝楕円の内側（下向き）
+    const s = (q.x - x0) / Math.max(1, x1 - x0);
+    const t = th * (prm.taper + (1 - prm.taper) * (1 - ease(s)) ** .8) * (i === up.length - 1 ? .15 : 1);
+    if (!headUp) headUp = q;
+    low.push(add(q, mul(n, t)));
+  }
+  const upperImg = up.map(q => loc(q.x, q.y));
+  const lowerImg = low.map(q => loc(q.x, q.y));
   return {
-    frame: { ...f, o: lower[0], L: Lb }, th,
-    outline: [...lower, tail, ...[...upper].reverse(), head],
-    handles: { ellC: e.c, ellT: loc(0, e.b), ellS: loc(e.a, 0), ellH: upper[0], ellE: upper[N] },
+    frame: { ...f, o: upperImg[0], L: x1 + e.a }, th,
+    // 上の縁（眉頭の先→眉尻）→ 下の縁（眉尻→眉頭の線）→ 眉頭の先へ戻って閉じる
+    outline: [...upperImg, ...lowerImg.reverse()],
+    handles: {
+      ellC: e.c, ellT: loc(0, e.b), ellS: loc(e.a, 0),
+      ellH: lowerImg[lowerImg.length - 1] || upperImg[0], ellE: upperImg[upperImg.length - 1],
+    },
   };
 }
 
@@ -997,20 +1021,16 @@ function applyEllipseHandle(dr, p) {
   const sides = state.design.linked ? ['L', 'R'] : [dr.side];
   if (dr.key === 'ellT') { const b = Math.max(4, dot(d, up)); for (const s of sides) state.ellipse[s].b = b; }
   else if (dr.key === 'ellS') {
-    const a = Math.max(6, dot(d, out), Math.max(Math.abs(e.x0), Math.abs(e.x1)) * 1.02);
+    const a = Math.max(6, dot(d, out), Math.abs(e.x0) * 1.02);
     for (const s of sides) state.ellipse[s].a = a;
+  } else if (dr.key === 'ellH') {
+    // 眉頭の線（下の縁の始まり）は横にだけ動かす。上の縁は楕円の端から始まるので変わらない
+    const x0 = Math.max(-e.a * .98, Math.min(dot(d, out), e.x1 - 8));
+    for (const s of sides) state.ellipse[s].x0 = x0;
   } else {
-    // 眉頭・眉尻を動かしたら、楕円の横の位置と幅を「眉頭〜眉尻を同じ余白の割合で覆う」ように合わせ直す
-    const x = dot(d, out);
-    let x0 = e.x0, x1 = e.x1;
-    if (dr.key === 'ellH') x0 = Math.min(x, x1 - 8); else x1 = Math.max(x, x0 + 8);
-    const k = Math.max(1.02, e.a / ((e.x1 - e.x0) / 2));
-    const mid = (x0 + x1) / 2;
-    for (const s of sides) {
-      const es = state.ellipse[s], o = s === 'L' ? mul(u, -1) : u;
-      es.c = add(es.c, mul(o, mid));
-      es.x0 = x0 - mid; es.x1 = x1 - mid; es.a = k * (x1 - x0) / 2;
-    }
+    // 眉尻の先は縦横に動かせる。弧を離れたあとの曲線がこの点へ向かう
+    const x1 = Math.max(dot(d, out), e.x0 + 8), y1 = dot(d, up);
+    for (const s of sides) Object.assign(state.ellipse[s], { x1, y1 });
   }
 }
 
