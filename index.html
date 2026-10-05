@@ -497,9 +497,9 @@ const COLORS_PRESET = [
 const pickShape = p => Object.fromEntries(SHAPE_KEYS.map(k => [k, p[k]]));
 function defaultDesign() {
   return {
-    linked: true, side: 'L', preset: 'natural', mode: 'param',
+    linked: true, side: 'L', preset: 'natural', mode: 'ellipse',
     prm: { L: pickShape(PRESETS.natural), R: pickShape(PRESETS.natural) },
-    color: COLORS_PRESET[0].hex, opacity: .7, soft: .12, lighten: 0,
+    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, lighten: 0,
   };
 }
 
@@ -1434,7 +1434,7 @@ const SLIDERS = {
     { key: 'fade', label: '眉頭のぼかし', min: 0, max: 1, step: .05, fmt: pct },
   ],
   color: [
-    { key: 'opacity', label: '濃さ', min: .1, max: .9, step: .01, fmt: pct },
+    { key: 'opacity', label: '濃さ', min: .1, max: 1, step: .01, fmt: pct },
     { key: 'soft', label: 'ふちのぼかし', min: .02, max: .35, step: .01, fmt: pct },
   ],
   lighten: [
@@ -1565,7 +1565,7 @@ compareBtn.addEventListener('keyup', () => setCompare(false));
 compareBtn.addEventListener('contextmenu', e => e.preventDefault());
 
 // 設定はこの端末のブラウザにだけ覚えておく（次に開いたときの続き用）
-const STORE_KEY = 'browsim.design.v3';
+const STORE_KEY = 'browsim.design.v4';
 function saveDesign() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state.design)); } catch {} }
 function loadDesign() {
   const d = defaultDesign();
@@ -1576,7 +1576,7 @@ function loadDesign() {
       for (const k of ['opacity', 'soft', 'lighten']) if (typeof saved[k] === 'number') d[k] = saved[k];
       if (typeof saved.color === 'string') d.color = saved.color;
       d.linked = saved.linked !== false; d.side = saved.side === 'R' ? 'R' : 'L';
-      d.mode = saved.mode === 'ellipse' ? 'ellipse' : 'param';
+      d.mode = saved.mode === 'param' ? 'param' : 'ellipse';
       d.preset = typeof saved.preset === 'string' && PRESETS[saved.preset] ? saved.preset : null;
     }
   } catch {}
