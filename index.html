@@ -53,6 +53,8 @@ h1 {
   font-family: var(--font-display); font-weight: 600; font-size: 19px;
   margin: 0; letter-spacing: .04em; text-wrap: balance;
 }
+.badge { font: inherit; cursor: default; background: transparent; }
+.badge.new { white-space: normal; text-align: right; cursor: pointer; color: var(--accent-ink); background: var(--accent); border-color: var(--accent); font-weight: 700; }
 .badge {
   font-size: 11px; letter-spacing: .08em; color: var(--muted);
   border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; white-space: nowrap;
@@ -228,7 +230,7 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
 <div class="app">
   <header>
     <h1>アートメイク眉シミュレーター</h1>
-    <span class="badge">第2版 眉の形</span>
+    <button type="button" class="badge" id="versionBadge" title="このページの版">版</button>
   </header>
 
   <div class="stage" id="stage">
@@ -1480,6 +1482,26 @@ stage.addEventListener('drop', e => {
   if (f) usePhoto(f);
 });
 window.__loadURL = async url => usePhoto(await (await fetch(url)).blob());
+
+// ---------- 版の表示 ----------
+// 公開のたびに bump_version.py が書き換える。右上に出し、見ているページが最新かを確かめられるようにする
+const APP_VERSION = 'v15 · 10/05 18:59';
+const versionBadge = document.getElementById('versionBadge');
+versionBadge.textContent = APP_VERSION;
+// 公開先に新しい版が出ていないかを、キャッシュを使わずに確かめる（claude.ai 版では読めないことがあるので失敗は無視）
+async function checkNewVersion() {
+  try {
+    const html = await (await fetch(location.href.split('#')[0], { cache: 'no-store' })).text();
+    const m = html.match(/const APP_VERSION = '([^']+)'/);
+    if (m && m[1] !== APP_VERSION) {
+      versionBadge.textContent = `新しい版 ${m[1].split(' ')[0]} があります（タップで更新）`;
+      versionBadge.classList.add('new');
+      versionBadge.onclick = () => location.reload();
+    }
+  } catch {}
+}
+checkNewVersion();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkNewVersion(); });
 
 // ---------- 起動 ----------
 // ---------- 眉の設定の操作盤 ----------
