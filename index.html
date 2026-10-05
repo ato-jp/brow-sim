@@ -278,6 +278,7 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
     <div class="edit-only" id="editPanel">
     <div>
       <p class="section-label">表示</p>
+      <div class="sliders overlay-sliders" id="overlaySliders"></div>
       <div class="chips">
         <label class="chip"><input type="checkbox" id="showDesign" checked>眉を重ねる</label>
         <label class="chip"><input type="checkbox" id="showLines" checked>マッピング線</label>
@@ -505,7 +506,9 @@ const PRESETS = {
   arch:    { name: 'アーチ眉',   peakPos: .62, arch: .12, thick: .15, taper: .25, length: 1, tailLift: .03, kaku: .05, fade: .5 },
   angle:   { name: '角眉',       peakPos: .68, arch: .11, thick: .16, taper: .25, length: 1, tailLift: .03, kaku: .9, fade: .4 },
 };
-const SHAPE_KEYS = ['peakPos', 'arch', 'thick', 'taper', 'length', 'tailLift', 'kaku', 'fade'];
+const SHAPE_KEYS = ['peakPos', 'arch', 'thick', 'taper', 'length', 'tailLift', 'kaku', 'fade', 'headOut', 'tailOut'];
+// 楕円法だけで使う値（眉頭・眉尻が楕円の外へはみ出す長さ。楕円の横の半径 a に対する割合）
+const SHAPE_EXTRA = { headOut: 0, tailOut: .2 };
 const COLORS_PRESET = [
   { name: 'ピンクパープル', hex: '#b2508f' },
   { name: 'アッシュブラウン', hex: '#6b5a4e' },
@@ -514,12 +517,12 @@ const COLORS_PRESET = [
   { name: 'グレージュ', hex: '#7a6e66' },
   { name: 'ソフトブラック', hex: '#2e2826' },
 ];
-const pickShape = p => Object.fromEntries(SHAPE_KEYS.map(k => [k, p[k]]));
+const pickShape = p => Object.fromEntries(SHAPE_KEYS.map(k => [k, p[k] ?? SHAPE_EXTRA[k]]));
 function defaultDesign() {
   return {
     linked: true, side: 'L', preset: 'natural', mode: 'ellipse',
     prm: { L: pickShape(PRESETS.natural), R: pickShape(PRESETS.natural) },
-    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, lighten: 1, view: 'simulate',
+    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, overlay: .5, lighten: 1, view: 'simulate',
   };
 }
 
@@ -573,12 +576,13 @@ function initEllipse(pts) {
     const t = m.tailTarget || add(p.eye, mul(out, len(sub(p.eye, p.inner)) * .3));
     const span = Math.max(12, dot(sub(t, h), out));
     // 眉頭の線〜眉尻の目安（◎）の間が、図の比率（中心から −0.52a 〜 +1.2a）になるよう横の半径を決める
-    const a = span / (ELL.tail - ELL.head);
+    const tailOut = state.design ? state.design.prm[side].tailOut : SHAPE_EXTRA.tailOut;
+    const a = span / (1 + tailOut - ELL.head);
     const b = a * ELL.ratio;
     const cx = add(h, mul(out, -ELL.head * a));
     const lidH = dot(sub(p.lid, cx), up);
     const c = add(cx, mul(up, lidH + b));             // 楕円の下端を上まぶたの高さに置く
-    res[side] = { c, a, b, x0: ELL.head * a, x1: ELL.tail * a, y1: ELL.tipY * b };
+    res[side] = { c, a, b, x0: ELL.head * a, y1: ELL.tipY * b };
   }
   return res;
 }
@@ -589,25 +593,34 @@ function ellipseBrowShape(pts, side, prm) {
   const loc = (x, y) => add(e.c, add(mul(f.out, x), mul(f.up, y)));
   const arc = x => e.b * Math.sqrt(Math.max(0, 1 - (x / e.a) ** 2));
   const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  const herm = (P0, T0, P1, T1, t) => {
+    const t2 = t * t, t3 = t2 * t;
+    return add(add(mul(P0, 2 * t3 - 3 * t2 + 1), mul(T0, t3 - 2 * t2 + t)), add(mul(P1, -2 * t3 + 3 * t2), mul(T1, t3 - t2)));
+  };
+  const slopeAt = x => -e.b * x / (e.a * e.a * Math.max(.05, Math.sqrt(1 - (x / e.a) ** 2)));
   // 上の縁：楕円の内側の端（x=−a）から弧に沿い、xP で弧を離れて眉尻の先へなめらかにつなぐ
-  const x1 = Math.max(-e.a * .5, e.x1);
+  // 眉頭・眉尻のはみ出し（headOut・tailOut）があるときは、弧の途中から楕円の外の先端へ曲線でつなぐ
+  const headOut = prm.headOut ?? 0, tailOut = prm.tailOut ?? SHAPE_EXTRA.tailOut;
+  const x1 = e.a * (1 + tailOut);
   const xP = Math.min(e.a * ELL.leave, x1);
+  const xS = headOut > 0 ? -e.a * ELL.leave : -e.a;
   const up = [];
+  const NT = 16;
+  if (headOut > 0) {
+    const H = { x: -e.a * (1 + headOut), y: ELL.tipY * e.b }, Q = { x: xS, y: arc(xS) };
+    const dq = Q.x - H.x;
+    for (let i = 0; i < NT; i++) up.push(herm(H, sub(Q, H), Q, { x: dq, y: slopeAt(xS) * dq }, i / NT));
+  }
   const NA = 48;
-  for (let i = 0; i <= NA; i++) { const x = -e.a + (xP + e.a) * i / NA; up.push({ x, y: arc(x) }); }
+  for (let i = 0; i <= NA; i++) { const x = xS + (xP - xS) * i / NA; up.push({ x, y: arc(x) }); }
   if (x1 > xP + 1) {
     const P0 = { x: xP, y: arc(xP) };
-    const slope = -e.b * xP / (e.a * e.a * Math.max(.05, Math.sqrt(1 - (xP / e.a) ** 2)));
     const d = x1 - xP;
-    const T0 = { x: d, y: slope * d }, P1 = { x: x1, y: e.y1 }, T1 = sub(P1, P0);
-    const NT = 16;
-    for (let i = 1; i <= NT; i++) {
-      const t = i / NT, t2 = t * t, t3 = t2 * t;
-      up.push(add(add(mul(P0, 2 * t3 - 3 * t2 + 1), mul(T0, t3 - 2 * t2 + t)), add(mul(P1, -2 * t3 + 3 * t2), mul(T1, t3 - t2))));
-    }
+    const T0 = { x: d, y: slopeAt(xP) * d }, P1 = { x: x1, y: e.y1 }, T1 = sub(P1, P0);
+    for (let i = 1; i <= NT; i++) up.push(herm(P0, T0, P1, T1, i / NT));
   }
   // 下の縁：眉頭の線（x0）から、上の縁の内向きの法線方向に太さぶん下げる。太さは眉尻へ向けて細くする
-  const x0 = Math.max(-e.a * .98, Math.min(e.x0, x1 - 6));
+  const x0 = Math.max(up[0].x + 2, Math.min(e.x0, x1 - 6));
   const th = prm.thick * 2.2 * e.b;
   const low = [];
   let headUp = null;
@@ -625,7 +638,7 @@ function ellipseBrowShape(pts, side, prm) {
   const upperImg = up.map(q => loc(q.x, q.y));
   const lowerImg = low.map(q => loc(q.x, q.y));
   return {
-    frame: { ...f, o: upperImg[0], L: x1 + e.a }, th,
+    frame: { ...f, o: upperImg[0], L: x1 - up[0].x }, th,
     // 上の縁（眉頭の先→眉尻）→ 下の縁（眉尻→眉頭の線）→ 眉頭の先へ戻って閉じる
     outline: [...upperImg, ...lowerImg.reverse()],
     handles: {
@@ -822,6 +835,7 @@ function ring(p, color, v, r) {
 
 function drawScene(v, opts = {}) {
   if (!state.img) return;
+  ctx.globalAlpha = 1;
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(state.img, v.tx, v.ty, state.W * v.s, state.H * v.s);
   const pts = state.pts;
@@ -843,6 +857,8 @@ function drawScene(v, opts = {}) {
   }
   // 線・基準点・取っ手はシミュレート中だけ描く（それ以外は仕上がりを見るための表示）
   if (!editing) return;
+  // 線・基準点・楕円・取っ手は、眉が見えるよう透かして描く（点を動かしている間は濃くする）
+  ctx.globalAlpha = state.drag ? Math.max(d.overlay, .85) : d.overlay;
   if (state.show.brow && state.brow) {
     for (const side of ['L', 'R']) for (const k of ['upper', 'lower']) {
       const arr = state.brow[side][k];
@@ -950,6 +966,7 @@ function drawLoupe() {
   ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
   ctx.fillStyle = '#000'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
   drawScene(v2, { loupe: true });
+  ctx.globalAlpha = 1;
   ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12); ctx.stroke();
   ctx.restore();
@@ -969,6 +986,7 @@ function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawScene(state.view);
+    ctx.globalAlpha = 1;
     if (state.drag) drawLoupe();
   });
 }
@@ -1025,12 +1043,14 @@ function applyEllipseHandle(dr, p) {
     for (const s of sides) state.ellipse[s].a = a;
   } else if (dr.key === 'ellH') {
     // 眉頭の線（下の縁の始まり）は横にだけ動かす。上の縁は楕円の端から始まるので変わらない
-    const x0 = Math.max(-e.a * .98, Math.min(dot(d, out), e.x1 - 8));
+    const prm = state.design.prm[dr.side];
+    const x0 = Math.max(-e.a * (1 + (prm.headOut ?? 0)) * .98, Math.min(dot(d, out), e.a * (1 + prm.tailOut) - 8));
     for (const s of sides) state.ellipse[s].x0 = x0;
   } else {
     // 眉尻の先は縦横に動かせる。弧を離れたあとの曲線がこの点へ向かう
-    const x1 = Math.max(dot(d, out), e.x0 + 8), y1 = dot(d, up);
-    for (const s of sides) Object.assign(state.ellipse[s], { x1, y1 });
+    const r = SLIDER_RANGE.tailOut;
+    const tailOut = Math.max(r[0], Math.min(r[1], Math.max(dot(d, out), e.x0 + 8) / e.a - 1)), y1 = dot(d, up);
+    for (const s of sides) { state.ellipse[s].y1 = y1; state.design.prm[s].tailOut = tailOut; }
   }
 }
 
@@ -1476,6 +1496,11 @@ const SLIDERS = {
     { key: 'tailLift', label: '眉尻の高さ（水平線から）', min: -.06, max: .12, step: .005, fmt: signedPct },
     { key: 'kaku', label: '眉山のかど', min: 0, max: 1, step: .05, fmt: pct },
     { key: 'fade', label: '眉頭のぼかし', min: 0, max: 1, step: .05, fmt: pct },
+    { key: 'headOut', label: '眉頭のはみ出し（楕円の外へ）', min: 0, max: .6, step: .01, fmt: pct, ellipseOnly: true },
+    { key: 'tailOut', label: '眉尻のはみ出し（楕円の外へ）', min: 0, max: .8, step: .01, fmt: pct, ellipseOnly: true },
+  ],
+  overlay: [
+    { key: 'overlay', label: '線・点・取っ手の濃さ', min: .15, max: 1, step: .05, fmt: pct },
   ],
   color: [
     { key: 'opacity', label: '濃さ', min: .1, max: 1, step: .01, fmt: pct },
@@ -1498,7 +1523,7 @@ function setValue(key, v) {
     for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s][key] = v;
     d.preset = null;
   } else d[key] = v;
-  if (key !== 'opacity' && key !== 'lighten') invalidateLayer();
+  if (!['opacity', 'lighten', 'overlay'].includes(key)) invalidateLayer();
 }
 
 const sliderEls = {};
@@ -1526,7 +1551,8 @@ for (const [id, p] of Object.entries(PRESETS)) {
   b.type = 'button'; b.className = 'chip'; b.dataset.preset = id; b.textContent = p.name;
   b.addEventListener('click', () => {
     const d = state.design;
-    for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s] = pickShape(p);
+    // プリセットは形だけを変え、楕円からのはみ出しはそのまま残す
+    for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s] = { ...pickShape(p), headOut: d.prm[s].headOut, tailOut: d.prm[s].tailOut };
     d.preset = id; invalidateLayer(); syncControls(); saveDesign(); draw();
   });
   presetBox.appendChild(b);
@@ -1584,6 +1610,7 @@ function syncControls() {
   document.getElementById('viewOnlyNote').hidden = d.view === 'simulate';
   // 楕円法では眉山の位置・高さ・眉尻の高さ・かどは楕円が決めるので、スライダーを止める
   const ell = d.mode === 'ellipse';
+  for (const { sp, input } of Object.values(sliderEls)) if (sp.ellipseOnly) input.closest('.slider').hidden = !ell;
   for (const k of ['peakPos', 'arch', 'tailLift', 'kaku', 'length']) {
     sliderEls[k].input.disabled = ell; sliderEls[k].input.closest('.slider').classList.toggle('off', ell);
   }
@@ -1617,7 +1644,7 @@ function loadDesign() {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if (saved && saved.prm && saved.prm.L && saved.prm.R) {
       for (const s of ['L', 'R']) for (const k of SHAPE_KEYS) if (typeof saved.prm[s][k] === 'number') d.prm[s][k] = saved.prm[s][k];
-      for (const k of ['opacity', 'soft', 'lighten']) if (typeof saved[k] === 'number') d[k] = saved[k];
+      for (const k of ['opacity', 'soft', 'lighten', 'overlay']) if (typeof saved[k] === 'number') d[k] = saved[k];
       if (typeof saved.color === 'string') d.color = saved.color;
       d.linked = saved.linked !== false; d.side = saved.side === 'R' ? 'R' : 'L';
       d.mode = saved.mode === 'param' ? 'param' : 'ellipse';
