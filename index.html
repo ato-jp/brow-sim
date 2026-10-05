@@ -1486,7 +1486,7 @@ window.__loadURL = async url => usePhoto(await (await fetch(url)).blob());
 // ---------- 版の表示 ----------
 // 公開のたびに bump_version.py が書き換える（大きな機能追加で a、改良・不具合直しで b を上げる）。
 // 右上に出し、見ているページが最新かを確かめられるようにする
-const APP_VERSION = 'ver 3.2 · 10/05 20:31';
+const APP_VERSION = 'ver 3.3 · 10/05 20:33';
 const versionBadge = document.getElementById('versionBadge');
 versionBadge.textContent = APP_VERSION;
 // 公開先に新しい版が出ていないかを、キャッシュを使わずに確かめる（claude.ai 版では読めないことがあるので失敗は無視）
@@ -1523,7 +1523,7 @@ const SLIDERS = {
   shape: [
     // 楕円法のときだけ出す3本。値は楕円の状態から計算し、動かすと楕円が変わる（取っ手と連動）
     { key: 'ePeak', label: '眉山の位置（眉頭の線から）', min: .2, max: .8, step: .01, fmt: pct, ellipseOnly: true },
-    { key: 'eRatio', label: '眉山の高さ（楕円の縦横比）', min: .2, max: .7, step: .01, fmt: pct, ellipseOnly: true },
+    { key: 'eRatio', label: '眉山の高さ（楕円の縦横比）', min: .1, max: .9, step: .01, fmt: pct, ellipseOnly: true },
     { key: 'eTipY', label: '眉尻の高さ（楕円の中心から）', min: -.8, max: .8, step: .02, fmt: signedPct, ellipseOnly: true },
     { key: 'peakPos', label: '眉山の位置（眉頭から）', min: .45, max: .85, step: .01, fmt: pct },
     { key: 'arch', label: '眉山の高さ', min: 0, max: .25, step: .005, fmt: pct },
@@ -1623,14 +1623,10 @@ for (const [group, list] of Object.entries(SLIDERS)) {
 }
 
 const presetBox = document.getElementById('presets');
-// 楕円の縦横比だけを変える。下端（上まぶたの高さ）は動かさない
+// 楕円の縦横比だけを変える。楕円の中心（＝眉頭の先の高さ）と眉尻の先は動かさず、眉山だけを上下させる
 function setEllipseRatio(sides, ratio) {
-  if (!state.ellipse || !state.pts) return;
-  const { up } = faceAxes(state.pts);
-  for (const s of sides) {
-    const e = state.ellipse[s], b = e.a * ratio;
-    e.c = add(e.c, mul(up, b - e.b)); e.y1 *= b / e.b; e.b = b;
-  }
+  if (!state.ellipse) return;
+  for (const s of sides) state.ellipse[s].b = state.ellipse[s].a * ratio;
 }
 for (const group of [...new Set(Object.values(PRESETS).map(p => p.group))]) {
   const row = document.createElement('div');
