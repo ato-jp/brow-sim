@@ -611,7 +611,8 @@ function ellipseBrowShape(pts, side, prm) {
   const headOut = prm.headOut ?? 0, tailOut = prm.tailOut ?? SHAPE_EXTRA.tailOut;
   const x1 = e.a * (1 + tailOut);
   const xP = Math.min(e.a * ELL.leave, x1);
-  const xS = headOut > 0 ? -e.a * ELL.leave : -e.a;
+  // はみ出しがマイナスのときは、楕円の内側の弧の途中から眉が始まる（眉尻も同様に弧の途中で終わる）
+  const xS = headOut > 0 ? -e.a * ELL.leave : -e.a * (1 + headOut);
   const up = [];
   const NT = 16;
   if (headOut > 0) {
@@ -1497,6 +1498,10 @@ const pct = v => Math.round(v * 100) + '%';
 const signedPct = v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%';
 const SLIDERS = {
   shape: [
+    // 楕円法のときだけ出す3本。値は楕円の状態から計算し、動かすと楕円が変わる（取っ手と連動）
+    { key: 'ePeak', label: '眉山の位置（眉頭の線から）', min: .2, max: .8, step: .01, fmt: pct, ellipseOnly: true },
+    { key: 'eRatio', label: '眉山の高さ（楕円の縦横比）', min: .2, max: .7, step: .01, fmt: pct, ellipseOnly: true },
+    { key: 'eTipY', label: '眉尻の高さ（楕円の中心から）', min: -.8, max: .8, step: .02, fmt: signedPct, ellipseOnly: true },
     { key: 'peakPos', label: '眉山の位置（眉頭から）', min: .45, max: .85, step: .01, fmt: pct },
     { key: 'arch', label: '眉山の高さ', min: 0, max: .25, step: .005, fmt: pct },
     { key: 'thick', label: '太さ', min: .08, max: .28, step: .005, fmt: pct },
@@ -1505,8 +1510,8 @@ const SLIDERS = {
     { key: 'tailLift', label: '眉尻の高さ（水平線から）', min: -.06, max: .12, step: .005, fmt: signedPct },
     { key: 'kaku', label: '眉山のかど', min: 0, max: 1, step: .05, fmt: pct },
     { key: 'fade', label: '眉頭のぼかし', min: 0, max: 1, step: .05, fmt: pct },
-    { key: 'headOut', label: '眉頭のはみ出し（楕円の外へ）', min: 0, max: .6, step: .01, fmt: pct, ellipseOnly: true },
-    { key: 'tailOut', label: '眉尻のはみ出し（楕円の外へ）', min: 0, max: .8, step: .01, fmt: pct, ellipseOnly: true },
+    { key: 'headOut', label: '眉頭のはみ出し（マイナス＝楕円の内側で始まる）', min: -.5, max: .6, step: .01, fmt: signedPct, ellipseOnly: true },
+    { key: 'tailOut', label: '眉尻のはみ出し（マイナス＝楕円の内側で終わる）', min: -.5, max: .8, step: .01, fmt: signedPct, ellipseOnly: true },
   ],
   overlay: [
     { key: 'overlay', label: '線・点・取っ手の濃さ', min: .15, max: 1, step: .05, fmt: pct },
@@ -1522,13 +1527,48 @@ const SLIDERS = {
 const SLIDER_RANGE = Object.fromEntries(Object.values(SLIDERS).flat().map(s => [s.key, [s.min, s.max]]));
 const SHAPE_SET = new Set(SHAPE_KEYS);
 
+// 楕円法のスライダー：眉山＝楕円のてっぺん（楕円の中心の真上）
+// ePeak＝眉頭の線から眉尻の先までのうち、眉山がどこにあるか／eRatio＝楕円の縦÷横／eTipY＝眉尻の先の高さ÷縦の半径
+const ELL_KEYS = new Set(['ePeak', 'eRatio', 'eTipY']);
+function ellipseValue(key, side) {
+  const e = state.ellipse && state.ellipse[side];
+  if (!e) return { ePeak: .5, eRatio: ELL.ratio, eTipY: ELL.tipY }[key];
+  const x1 = e.a * (1 + state.design.prm[side].tailOut);
+  if (key === 'ePeak') return -e.x0 / Math.max(1, x1 - e.x0);
+  if (key === 'eRatio') return e.b / e.a;
+  return e.y1 / e.b;
+}
+function setEllipseValue(key, v, sides) {
+  if (!state.ellipse || !state.pts) return;
+  if (key === 'eRatio') return setEllipseRatio(sides, v);
+  const { u } = faceAxes(state.pts);
+  for (const s of sides) {
+    const e = state.ellipse[s], prm = state.design.prm[s];
+    if (key === 'eTipY') { e.y1 = v * e.b; continue; }
+    // 眉山の位置：楕円だけを横に dx ずらし、眉の両端（眉頭の先・眉尻の先）と眉頭の線は写真の上で止めておく
+    // 楕円の端からのはみ出し（headOut・tailOut）でずらした分を打ち消す。はみ出しが0になる所が動かせる限界
+    const x1 = e.a * (1 + prm.tailOut);
+    const [hMin, hMax] = SLIDER_RANGE.headOut, [tMin, tMax] = SLIDER_RANGE.tailOut, h = prm.headOut || 0;
+    // dx の範囲：ずらしたあとも両方のはみ出しがスライダーの範囲に収まること
+    const lo = Math.max((hMin - h) * e.a, (prm.tailOut - tMax) * e.a), hi = Math.min((hMax - h) * e.a, (prm.tailOut - tMin) * e.a);
+    const dx = Math.max(lo, Math.min(hi, e.x0 + v * (x1 - e.x0)));
+    e.c = add(e.c, mul(s === 'L' ? mul(u, -1) : u, dx));
+    e.x0 -= dx;
+    prm.headOut = h + dx / e.a;
+    prm.tailOut = prm.tailOut - dx / e.a;
+  }
+}
 function valueOf(key) {
   const d = state.design;
+  if (ELL_KEYS.has(key)) return ellipseValue(key, d.linked ? 'L' : d.side);
   return SHAPE_SET.has(key) ? d.prm[d.side][key] : d[key];
 }
 function setValue(key, v) {
   const d = state.design;
-  if (SHAPE_SET.has(key)) {
+  if (ELL_KEYS.has(key)) {
+    setEllipseValue(key, v, d.linked ? ['L', 'R'] : [d.side]);
+    d.preset = null;
+  } else if (SHAPE_SET.has(key)) {
     for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s][key] = v;
     d.preset = null;
   } else d[key] = v;
@@ -1545,7 +1585,8 @@ for (const [group, list] of Object.entries(SLIDERS)) {
     const input = wrap.querySelector('input'), out = wrap.querySelector('output');
     input.addEventListener('input', () => {
       setValue(sp.key, +input.value); out.textContent = sp.fmt(+input.value);
-      if (SHAPE_SET.has(sp.key)) syncPresets();
+      if (ELL_KEYS.has(sp.key)) syncControls();   // 眉山の位置を動かすと眉尻のはみ出しも変わるため表示をそろえる
+      else if (SHAPE_SET.has(sp.key)) syncPresets();
       draw();
     });
     input.addEventListener('change', saveDesign);
@@ -1638,9 +1679,8 @@ function syncControls() {
   // 楕円法では眉山の位置・高さ・眉尻の高さ・かどは楕円が決めるので、スライダーを止める
   const ell = d.mode === 'ellipse';
   for (const { sp, input } of Object.values(sliderEls)) if (sp.ellipseOnly) input.closest('.slider').hidden = !ell;
-  for (const k of ['peakPos', 'arch', 'tailLift', 'kaku', 'length']) {
-    sliderEls[k].input.disabled = ell; sliderEls[k].input.closest('.slider').classList.toggle('off', ell);
-  }
+  // 楕円法では「数値で作る」専用の5本を隠す（眉山・眉尻は楕円法用の3本で動かす）
+  for (const k of ['peakPos', 'arch', 'tailLift', 'kaku', 'length']) sliderEls[k].input.closest('.slider').hidden = ell;
   for (const b of modeSeg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.mode === d.mode));
   document.getElementById('ellipseNote').hidden = !ell;
   document.getElementById('paramNote').hidden = ell;
