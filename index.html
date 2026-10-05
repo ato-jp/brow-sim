@@ -64,7 +64,7 @@ h1 {
 #view { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
 #view.dragging { cursor: grabbing; }
 .status {
-  position: absolute; left: 10px; right: 10px; bottom: 10px;
+  position: absolute; left: 10px; right: 10px; bottom: 48px;
   display: flex; align-items: center; gap: 8px;
   background: rgba(20, 16, 22, .78); color: #f4eef6;
   font-size: 13px; padding: 7px 12px; border-radius: 10px;
@@ -140,8 +140,15 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
 .swatch i { width: 20px; height: 20px; border-radius: 50%; display: block; }
 .swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .swatch input[type="color"] { width: 22px; height: 22px; border: 0; padding: 0; background: none; }
-.compare { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-.compare.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+/* 写真の見え方の切り替え（写真の上に置くので両テーマ共通の色） */
+.view-seg {
+  position: absolute; bottom: 10px; left: 10px; right: 10px; display: flex; gap: 4px; justify-content: center;
+}
+.view-seg button {
+  font: inherit; font-size: 12px; color: #f4eef6; background: rgba(20, 16, 22, .72);
+  border: 1px solid transparent; border-radius: 8px; padding: 6px 9px; cursor: pointer;
+}
+.view-seg button[aria-pressed="true"] { background: #f4eef6; color: #1d1820; font-weight: 700; }
 .pose-card {
   display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px;
   background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--ok);
@@ -223,6 +230,11 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
       <button type="button" id="zoomBrow">眉まわり</button>
       <button type="button" id="zoomAll">全体</button>
     </div>
+    <div class="view-seg" id="viewSeg" role="group" aria-label="写真の見え方">
+      <button type="button" data-view="original" title="元の写真だけ">元の写真</button>
+      <button type="button" data-view="noBrow" title="元の眉を消して、新しい眉を重ねる">元の眉を消す</button>
+      <button type="button" data-view="withBrow" title="元の眉の上に、新しい眉を重ねる">元の眉に重ねる</button>
+    </div>
     <div class="pose-badge" id="poseBadge" hidden></div>
     <div class="status" id="status" role="status"><span class="spin" id="spin" hidden></span><span id="statusText"></span></div>
   </div>
@@ -268,7 +280,6 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
       </div>
     </div>
 
-    <button type="button" class="btn compare" id="compare">押している間だけ元の写真を表示</button>
 
     <section class="group">
       <p class="section-label">眉の形</p>
@@ -296,7 +307,7 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
     </section>
 
     <section class="group">
-      <p class="section-label">今の眉を薄くする</p>
+      <p class="section-label">元の眉を消す強さ（「元の眉なし」のとき）</p>
       <div class="sliders" id="lightenSliders"></div>
       <p class="note" id="lightenNote">眉の上下の肌の色で、今の眉を塗りつぶして薄く見せます。前髪が眉にかかっている写真ではうまく消えません。</p>
     </section>
@@ -372,7 +383,7 @@ const state = {
   design: null,         // 重ねる眉の設定（defaultDesign() の形）
   layer: null,          // 重ねる眉の絵（設定や基準点が変わったら null にして作り直す）
   patches: null,        // 今の眉を薄くする差し替え片（写真・検出が変わったら null）
-  compare: false,       // 「元の写真」ボタンを押している間 true
+  // 写真の見え方は design.view：'original'＝元の写真だけ／'noBrow'＝元の眉を消して新しい眉／'withBrow'＝元の眉の上に新しい眉
 };
 
 // ---------- 小さな幾何 ----------
@@ -499,7 +510,7 @@ function defaultDesign() {
   return {
     linked: true, side: 'L', preset: 'natural', mode: 'ellipse',
     prm: { L: pickShape(PRESETS.natural), R: pickShape(PRESETS.natural) },
-    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, lighten: 0,
+    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, lighten: 1, view: 'noBrow',
   };
 }
 
@@ -781,9 +792,9 @@ function drawScene(v, opts = {}) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(state.img, v.tx, v.ty, state.W * v.s, state.H * v.s);
   const pts = state.pts;
-  if (!pts || state.compare) return;
   const d = state.design;
-  if (d.lighten > 0) {
+  if (!pts || d.view === 'original') return;
+  if (d.view === 'noBrow' && d.lighten > 0) {
     ctx.save(); ctx.globalAlpha = d.lighten;
     for (const p of lightenPatches()) ctx.drawImage(p.canvas, v.tx + p.x * v.s, v.ty + p.y * v.s, p.w * v.s, p.h * v.s);
     ctx.restore();
@@ -1535,6 +1546,7 @@ function syncControls() {
   custom.setAttribute('aria-pressed', String(!COLORS_PRESET.some(c => c.hex === d.color)));
   customInput.value = d.color;
   linkedEl.checked = d.linked;
+  for (const b of viewSeg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.view === d.view));
   // 楕円法では眉山の位置・高さ・眉尻の高さ・かどは楕円が決めるので、スライダーを止める
   const ell = d.mode === 'ellipse';
   for (const k of ['peakPos', 'arch', 'tailLift', 'kaku', 'length']) {
@@ -1549,23 +1561,20 @@ function syncControls() {
 }
 
 document.getElementById('resetShape').addEventListener('click', () => {
-  const { lighten, mode } = state.design;
-  state.design = defaultDesign(); Object.assign(state.design, { lighten, mode });
+  const { lighten, mode, view } = state.design;
+  state.design = defaultDesign(); Object.assign(state.design, { lighten, mode, view });
   if (state.pts) state.ellipse = initEllipse(state.pts);
   invalidateLayer(); syncControls(); saveDesign(); draw();
 });
 
-// 押している間だけ、重ねた眉や線を消して元の写真を見せる
-const compareBtn = document.getElementById('compare');
-const setCompare = on => { state.compare = on; compareBtn.classList.toggle('on', on); draw(); };
-compareBtn.addEventListener('pointerdown', e => { e.preventDefault(); setCompare(true); });
-for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) compareBtn.addEventListener(ev, () => setCompare(false));
-compareBtn.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') setCompare(true); });
-compareBtn.addEventListener('keyup', () => setCompare(false));
-compareBtn.addEventListener('contextmenu', e => e.preventDefault());
+// 写真の見え方を3通りで切り替える（押すたびに固定され、指を離しても戻らない）
+const viewSeg = document.getElementById('viewSeg');
+for (const b of viewSeg.querySelectorAll('button')) b.addEventListener('click', () => {
+  state.design.view = b.dataset.view; syncControls(); saveDesign(); draw();
+});
 
 // 設定はこの端末のブラウザにだけ覚えておく（次に開いたときの続き用）
-const STORE_KEY = 'browsim.design.v4';
+const STORE_KEY = 'browsim.design.v5';
 function saveDesign() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state.design)); } catch {} }
 function loadDesign() {
   const d = defaultDesign();
@@ -1577,6 +1586,7 @@ function loadDesign() {
       if (typeof saved.color === 'string') d.color = saved.color;
       d.linked = saved.linked !== false; d.side = saved.side === 'R' ? 'R' : 'L';
       d.mode = saved.mode === 'param' ? 'param' : 'ellipse';
+      if (['original', 'noBrow', 'withBrow'].includes(saved.view)) d.view = saved.view;
       d.preset = typeof saved.preset === 'string' && PRESETS[saved.preset] ? saved.preset : null;
     }
   } catch {}
