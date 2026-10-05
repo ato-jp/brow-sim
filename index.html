@@ -148,6 +148,10 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
   font: inherit; font-size: 12px; color: #f4eef6; background: rgba(20, 16, 22, .72);
   border: 1px solid transparent; border-radius: 8px; padding: 6px 9px; cursor: pointer;
 }
+.edit-only { display: flex; flex-direction: column; gap: 14px; }
+@media (max-width: 440px) {
+  .view-seg button { font-size: 11px; padding: 6px 7px; }
+}
 .view-seg button[aria-pressed="true"] { background: #f4eef6; color: #1d1820; font-weight: 700; }
 .pose-card {
   display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px;
@@ -214,7 +218,8 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
     height: 48dvh; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2;
     box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .45);
   }
-  .app { height: auto; min-height: 100%; }
+  /* 余った高さは操作盤の行に回し、写真の下に空白を作らない */
+  .app { height: auto; min-height: 100%; grid-template-rows: auto auto 1fr; }
 }
 </style>
 
@@ -231,9 +236,10 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
       <button type="button" id="zoomAll">全体</button>
     </div>
     <div class="view-seg" id="viewSeg" role="group" aria-label="写真の見え方">
+      <button type="button" data-view="simulate" title="線・基準点・調整を表示して眉を作る">シミュレート</button>
       <button type="button" data-view="original" title="元の写真だけ">元の写真</button>
-      <button type="button" data-view="noBrow" title="元の眉を消して、新しい眉を重ねる">元の眉を消す</button>
-      <button type="button" data-view="withBrow" title="元の眉の上に、新しい眉を重ねる">元の眉に重ねる</button>
+      <button type="button" data-view="noBrow" title="元の眉を消して、新しい眉を重ねる">眉を消す</button>
+      <button type="button" data-view="withBrow" title="元の眉の上に、新しい眉を重ねる">眉に重ねる</button>
     </div>
     <div class="pose-badge" id="poseBadge" hidden></div>
     <div class="status" id="status" role="status"><span class="spin" id="spin" hidden></span><span id="statusText"></span></div>
@@ -268,6 +274,8 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
     </div>
     <p class="note warn" id="pickHint" hidden>写真の選択画面が開かない場合は、このページを Safari や Chrome などのブラウザで開いてください（Claude アプリの中では写真を選べないことがあります）。</p>
 
+    <p class="note" id="viewOnlyNote" hidden>線や基準点、形・色の調整は「シミュレート」を選ぶと表示されます。</p>
+    <div class="edit-only" id="editPanel">
     <div>
       <p class="section-label">表示</p>
       <div class="chips">
@@ -327,6 +335,7 @@ button.chip { font: inherit; font-size: 13px; color: var(--ink); }
       </ul>
       <p class="note">重ねる眉は、眉頭を「眉頭の線と眉頭の高さの交点」、眉尻を ◎ に合わせて置きます。基準点を動かすと眉もついてきます。</p>
     </details>
+    </div>
 
     <p class="note">基準点（小鼻・黒目の外側・目尻・眉頭）は指でドラッグして直せます。2本指で拡大、1本指で移動。写真はこの端末の中だけで処理し、どこにも送りません。</p>
   </div>
@@ -510,7 +519,7 @@ function defaultDesign() {
   return {
     linked: true, side: 'L', preset: 'natural', mode: 'ellipse',
     prm: { L: pickShape(PRESETS.natural), R: pickShape(PRESETS.natural) },
-    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, lighten: 1, view: 'noBrow',
+    color: COLORS_PRESET[0].hex, opacity: 1, soft: .12, lighten: 1, view: 'simulate',
   };
 }
 
@@ -794,18 +803,22 @@ function drawScene(v, opts = {}) {
   const pts = state.pts;
   const d = state.design;
   if (!pts || d.view === 'original') return;
-  if (d.view === 'noBrow' && d.lighten > 0) {
+  // シミュレート中は元の眉を消した状態で作る（強さは「元の眉を消す強さ」）
+  if ((d.view === 'noBrow' || d.view === 'simulate') && d.lighten > 0) {
     ctx.save(); ctx.globalAlpha = d.lighten;
     for (const p of lightenPatches()) ctx.drawImage(p.canvas, v.tx + p.x * v.s, v.ty + p.y * v.s, p.w * v.s, p.h * v.s);
     ctx.restore();
   }
-  const layer = state.show.design ? designLayer() : null;
+  const editing = d.view === 'simulate';
+  const layer = state.show.design || !editing ? designLayer() : null;
   if (layer) {
     // 乗算で重ねると、下の肌の明るさや陰影が透けて、描いた色が肌に乗ったように見える
     ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = d.opacity;
     ctx.drawImage(layer.canvas, v.tx + layer.x * v.s, v.ty + layer.y * v.s, layer.w * v.s, layer.h * v.s);
     ctx.restore();
   }
+  // 線・基準点・取っ手はシミュレート中だけ描く（それ以外は仕上がりを見るための表示）
+  if (!editing) return;
   if (state.show.brow && state.brow) {
     for (const side of ['L', 'R']) for (const k of ['upper', 'lower']) {
       const arr = state.brow[side][k];
@@ -959,7 +972,7 @@ document.getElementById('zoomBrow').onclick = fitBrows;
 const pointers = new Map();
 let gesture = null;
 function hitPoint(q) {
-  if (!state.pts) return null;
+  if (!state.pts || state.design.view !== 'simulate') return null;
   let best = null, bestD = 26;
   for (const side of ['L', 'R']) for (const key of Object.keys(POINT_LABEL)) {
     const d = len(sub(toScreen(state.pts[side][key], state.view), q));
@@ -1547,6 +1560,8 @@ function syncControls() {
   customInput.value = d.color;
   linkedEl.checked = d.linked;
   for (const b of viewSeg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.view === d.view));
+  document.getElementById('editPanel').hidden = d.view !== 'simulate';
+  document.getElementById('viewOnlyNote').hidden = d.view === 'simulate';
   // 楕円法では眉山の位置・高さ・眉尻の高さ・かどは楕円が決めるので、スライダーを止める
   const ell = d.mode === 'ellipse';
   for (const k of ['peakPos', 'arch', 'tailLift', 'kaku', 'length']) {
@@ -1586,7 +1601,7 @@ function loadDesign() {
       if (typeof saved.color === 'string') d.color = saved.color;
       d.linked = saved.linked !== false; d.side = saved.side === 'R' ? 'R' : 'L';
       d.mode = saved.mode === 'param' ? 'param' : 'ellipse';
-      if (['original', 'noBrow', 'withBrow'].includes(saved.view)) d.view = saved.view;
+      if (['simulate', 'original', 'noBrow', 'withBrow'].includes(saved.view)) d.view = saved.view;
       d.preset = typeof saved.preset === 'string' && PRESETS[saved.preset] ? saved.preset : null;
     }
   } catch {}
