@@ -1484,8 +1484,9 @@ stage.addEventListener('drop', e => {
 window.__loadURL = async url => usePhoto(await (await fetch(url)).blob());
 
 // ---------- 版の表示 ----------
-// 公開のたびに bump_version.py が書き換える。右上に出し、見ているページが最新かを確かめられるようにする
-const APP_VERSION = 'v15 · 10/05 18:59';
+// 公開のたびに bump_version.py が書き換える（大きな機能追加で a、改良・不具合直しで b を上げる）。
+// 右上に出し、見ているページが最新かを確かめられるようにする
+const APP_VERSION = 'ver 3.1 · 10/05 19:10';
 const versionBadge = document.getElementById('versionBadge');
 versionBadge.textContent = APP_VERSION;
 // 公開先に新しい版が出ていないかを、キャッシュを使わずに確かめる（claude.ai 版では読めないことがあるので失敗は無視）
@@ -1494,7 +1495,7 @@ async function checkNewVersion() {
     const html = await (await fetch(location.href.split('#')[0], { cache: 'no-store' })).text();
     const m = html.match(/const APP_VERSION = '([^']+)'/);
     if (m && m[1] !== APP_VERSION) {
-      versionBadge.textContent = `新しい版 ${m[1].split(' ')[0]} があります（タップで更新）`;
+      versionBadge.textContent = `新しい版 ${m[1].split(' · ')[0]} があります（タップで更新）`;
       versionBadge.classList.add('new');
       versionBadge.onclick = () => location.reload();
     }
@@ -1532,8 +1533,8 @@ const SLIDERS = {
     { key: 'tailLift', label: '眉尻の高さ（水平線から）', min: -.06, max: .12, step: .005, fmt: signedPct },
     { key: 'kaku', label: '眉山のかど', min: 0, max: 1, step: .05, fmt: pct },
     { key: 'fade', label: '眉頭のぼかし', min: 0, max: 1, step: .05, fmt: pct },
-    { key: 'headOut', label: '眉頭のはみ出し（マイナス＝楕円の内側で始まる）', min: -.5, max: .6, step: .01, fmt: signedPct, ellipseOnly: true },
-    { key: 'tailOut', label: '眉尻のはみ出し（マイナス＝楕円の内側で終わる）', min: -.5, max: .8, step: .01, fmt: signedPct, ellipseOnly: true },
+    { key: 'headOut', label: '眉頭の長さ（楕円の端から。＋で外へはみ出す）', min: -.5, max: 1.2, step: .01, fmt: signedPct, ellipseOnly: true },
+    { key: 'tailOut', label: '眉尻の長さ（楕円の端から。＋で外へはみ出す）', min: -.5, max: 1.5, step: .01, fmt: signedPct, ellipseOnly: true },
   ],
   overlay: [
     { key: 'overlay', label: '線・点・取っ手の濃さ', min: .15, max: 1, step: .05, fmt: pct },
