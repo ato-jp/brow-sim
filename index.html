@@ -1,0 +1,1593 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="robots" content="noindex"><style>body{margin:0}</style></head><body>
+<title>アートメイク眉シミュレーター</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Zen+Old+Mincho:wght@600&display=swap">
+<style>
+/* 配置: スマホは「写真（上）＋操作盤（下）」、広い画面は「写真（左）＋操作盤（右）」 */
+:root {
+  --bg: #f3f1f4;
+  --panel: #ffffff;
+  --ink: #2a2230;
+  --muted: #6e6474;
+  --line: #e2dce5;
+  --accent: #7b3463;
+  --accent-ink: #ffffff;
+  --stage: #1d1820;
+  --ok: #1f7a4d;
+  --warn: #b5541c;
+  --font-display: "Zen Old Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  /* 写真の上の線の色（写真の上に描くので両テーマ共通） */
+  --c-head: #3fd0c9;
+  --c-peak: #ff5fa2;
+  --c-tail: #ffc145;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17131a; --panel: #221c26; --ink: #efe8f1; --muted: #a99db0;
+    --line: #3a3140; --accent: #d68ab9; --accent-ink: #1d1820; --stage: #0e0b10; --ok: #5fcf95; --warn: #f0995e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17131a; --panel: #221c26; --ink: #efe8f1; --muted: #a99db0;
+  --line: #3a3140; --accent: #d68ab9; --accent-ink: #1d1820; --stage: #0e0b10; --ok: #5fcf95; --warn: #f0995e;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+}
+.app {
+  display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%; max-width: 1280px; margin: 0 auto;
+}
+header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 10px 16px 8px;
+}
+h1 {
+  font-family: var(--font-display); font-weight: 600; font-size: 19px;
+  margin: 0; letter-spacing: .04em; text-wrap: balance;
+}
+.badge {
+  font-size: 11px; letter-spacing: .08em; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; white-space: nowrap;
+}
+.stage {
+  position: relative; background: var(--stage); min-height: 300px;
+  margin: 0 16px; border-radius: 14px; overflow: hidden;
+}
+#view { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#view.dragging { cursor: grabbing; }
+.status {
+  position: absolute; left: 10px; right: 10px; bottom: 10px;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(20, 16, 22, .78); color: #f4eef6;
+  font-size: 13px; padding: 7px 12px; border-radius: 10px;
+  backdrop-filter: blur(6px);
+}
+.status .spin {
+  width: 14px; height: 14px; flex: none; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.25); border-top-color: #fff;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .status .spin { animation-duration: 3s; } }
+.zoom {
+  position: absolute; top: 10px; right: 10px; display: flex; gap: 6px;
+}
+.zoom button {
+  background: rgba(20, 16, 22, .72); color: #f4eef6; border: 0;
+  font: inherit; font-size: 12px; padding: 6px 10px; border-radius: 8px; cursor: pointer;
+}
+.panel {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 14px 16px 18px; overflow-y: auto; min-width: 0;
+}
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  font: inherit; font-size: 14px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: 10px; padding: 10px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  flex: 1 1 0; min-width: 0;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn:focus-visible, .chip:focus-within, .zoom button:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 13px; padding: 5px 11px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel); user-select: none;
+}
+.chip input { accent-color: var(--accent); margin: 0; }
+.section-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .12em; color: var(--muted); margin: 0 0 6px;
+}
+.legend { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.legend li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; align-items: start; }
+.legend .sw { height: 3px; margin-top: 10px; border-radius: 2px; }
+.legend b { font-weight: 700; }
+.legend span { color: var(--muted); font-size: 13px; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+.group { display: flex; flex-direction: column; gap: 10px; }
+details.group summary { cursor: pointer; margin: 0; }
+.sliders { display: grid; gap: 4px 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); }
+.slider { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; font-size: 13px; }
+.slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.slider input { grid-column: 1 / -1; width: 100%; margin: 2px 0 6px; accent-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.chip { font: inherit; font-size: 13px; color: var(--ink); }
+.side-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12px; border: 0; background: var(--panel); color: var(--ink); padding: 5px 11px; cursor: pointer; }
+.mode-seg { align-self: flex-start; }
+.mode-seg button { font-size: 13px; padding: 6px 14px; }
+.slider.off { opacity: .4; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.swatch {
+  display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; color: var(--ink);
+  border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 3px 10px 3px 3px; cursor: pointer;
+}
+.swatch i { width: 20px; height: 20px; border-radius: 50%; display: block; }
+.swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.swatch input[type="color"] { width: 22px; height: 22px; border: 0; padding: 0; background: none; }
+.compare { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.compare.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.pose-card {
+  display: grid; gap: 6px; padding: 10px 12px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--ok);
+}
+.pose-card.bad { border-left-color: var(--warn); }
+.pose-card b { font-size: 15px; }
+.pose-card.ok b { color: var(--ok); }
+.pose-card.bad b { color: var(--warn); }
+.pose-nums { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pose-nums .over { color: var(--warn); font-weight: 700; }
+.pose-badge {
+  position: absolute; top: 10px; left: 10px; font-size: 12px; font-weight: 700;
+  padding: 5px 10px; border-radius: 8px; color: #fff; background: var(--ok);
+}
+.pose-badge.bad { background: var(--warn); }
+.file-btn { position: relative; overflow: hidden; }
+.live-btn { flex: none; }
+/* カメラ画面：映像を全面に出し、顔を入れる楕円の枠と案内を重ねる（写真の上に描くので両テーマ共通の色） */
+.cam { position: fixed; inset: 0; z-index: 50; background: #000; color: #fff; }
+.cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.cam-oval {
+  position: absolute; left: 50%; top: 46%; width: min(62vw, 46vh); aspect-ratio: 3 / 4;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  border: 3px dashed rgba(255, 255, 255, .85); box-shadow: 0 0 0 200vmax rgba(0, 0, 0, .35);
+  transition: border-color .2s;
+}
+.cam-oval.ok { border: 4px solid #5fcf95; }
+.cam-oval.bad { border-color: #f0995e; }
+.cam-top {
+  position: absolute; left: 12px; right: 12px; top: calc(12px + env(safe-area-inset-top, 0px));
+  display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; background: rgba(0, 0, 0, .55);
+}
+.cam-top b { font-size: 16px; line-height: 1.4; }
+.cam-top span { font-size: 12px; opacity: .85; font-variant-numeric: tabular-nums; }
+.cam-bar { height: 4px; background: rgba(255, 255, 255, .2); border-radius: 2px; overflow: hidden; }
+.cam-bar i { display: block; height: 100%; width: 0; background: #5fcf95; }
+.cam-bottom {
+  position: absolute; left: 0; right: 0; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px 12px; padding: 0 16px;
+}
+.cam-btn { font: inherit; font-size: 13px; color: #fff; background: rgba(0, 0, 0, .5); border: 1px solid rgba(255, 255, 255, .4); border-radius: 10px; padding: 8px 10px; cursor: pointer; }
+.cam-btn:first-child { justify-self: start; }
+.cam-btn:nth-child(3) { justify-self: end; }
+.cam-shutter { width: 68px; height: 68px; border-radius: 50%; border: 4px solid #fff; background: rgba(255, 255, 255, .35); cursor: pointer; }
+.cam-shutter:active { background: #fff; }
+.cam-auto { grid-column: 1 / -1; justify-self: center; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; background: rgba(0, 0, 0, .5); padding: 4px 10px; border-radius: 999px; }
+.file-btn input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer; font-size: 100px;
+}
+.file-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note.warn { color: var(--ink); background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 8px 12px; }
+
+@media (min-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr); }
+  header { grid-column: 1 / -1; }
+  .stage { margin: 0 0 16px 16px; }
+  .panel { padding-top: 0; }
+}
+@media (max-width: 899px) {
+  /* スライダーを動かしながら眉の変化を見られるよう、写真の欄は画面上部に貼り付けておく */
+  .stage {
+    height: 48dvh; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 2;
+    box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .45);
+  }
+  .app { height: auto; min-height: 100%; }
+}
+</style>
+
+<div class="app">
+  <header>
+    <h1>アートメイク眉シミュレーター</h1>
+    <span class="badge">第2版 眉の形</span>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="顔写真とマッピング線"></canvas>
+    <div class="zoom">
+      <button type="button" id="zoomBrow">眉まわり</button>
+      <button type="button" id="zoomAll">全体</button>
+    </div>
+    <div class="pose-badge" id="poseBadge" hidden></div>
+    <div class="status" id="status" role="status"><span class="spin" id="spin" hidden></span><span id="statusText"></span></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <!-- アプリ内表示では label 経由のクリックが届かないことがあるため、透明な input そのものをボタンに重ねて直接タップさせる -->
+      <div class="btn primary file-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        撮影する
+        <input type="file" id="cam" accept="image/*" capture="user" aria-label="撮影する">
+      </div>
+      <div class="btn file-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 16l5-5 4 4 3-3 4 4"/></svg>
+        写真を選ぶ
+        <input type="file" id="pick" accept="image/*" aria-label="写真を選ぶ">
+      </div>
+    </div>
+    <button type="button" class="btn live-btn" id="liveCam">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg>
+      カメラで向きを確かめながら撮る
+    </button>
+    <div class="pose-card" id="poseCard" hidden aria-live="polite">
+      <b id="poseTitle"></b>
+      <div class="pose-nums" id="poseNums"></div>
+      <span class="note" id="poseMsg"></span>
+      <div class="btn primary file-btn" id="retake" hidden>
+        撮り直す
+        <input type="file" id="cam2" accept="image/*" capture="user" aria-label="撮り直す">
+      </div>
+    </div>
+    <p class="note warn" id="pickHint" hidden>写真の選択画面が開かない場合は、このページを Safari や Chrome などのブラウザで開いてください（Claude アプリの中では写真を選べないことがあります）。</p>
+
+    <div>
+      <p class="section-label">表示</p>
+      <div class="chips">
+        <label class="chip"><input type="checkbox" id="showDesign" checked>眉を重ねる</label>
+        <label class="chip"><input type="checkbox" id="showLines" checked>マッピング線</label>
+        <label class="chip"><input type="checkbox" id="showPoints" checked>基準点</label>
+        <label class="chip"><input type="checkbox" id="showMid">顔の中心線</label>
+        <label class="chip"><input type="checkbox" id="showBrow">今の眉の輪郭</label>
+        <label class="chip" id="showEllipseChip" hidden><input type="checkbox" id="showEllipse" checked>楕円</label>
+      </div>
+    </div>
+
+    <button type="button" class="btn compare" id="compare">押している間だけ元の写真を表示</button>
+
+    <section class="group">
+      <p class="section-label">眉の形</p>
+      <div class="seg mode-seg" id="modeSeg" role="group" aria-label="形の決め方">
+        <button type="button" data-mode="param" aria-pressed="true">数値で作る</button>
+        <button type="button" data-mode="ellipse" aria-pressed="false">楕円法</button>
+      </div>
+      <p class="note" id="ellipseNote" hidden>目と眉の間の楕円の上側の弧に、眉の上の縁を合わせます。白い○で楕円を動かし、◆で高さ、白い■で幅を変えます（向きは顔の横線に固定）。青緑の■（眉頭）と黄色の■（眉尻）を動かすと、楕円の幅も一緒に合わせ直します。</p>
+      <div class="chips" id="presets"></div>
+      <div class="side-row">
+        <label class="chip"><input type="checkbox" id="linked" checked>左右を同じ形にする</label>
+        <div class="seg" id="sideSeg" hidden>
+          <button type="button" data-side="L" aria-pressed="true">画像の左の眉</button>
+          <button type="button" data-side="R" aria-pressed="false">画像の右の眉</button>
+        </div>
+      </div>
+      <div class="sliders" id="shapeSliders"></div>
+      <p class="note" id="paramNote">眉の上の◆（眉山）と眉尻の■は、指でドラッグしても動かせます。</p>
+    </section>
+
+    <section class="group">
+      <p class="section-label">色と濃さ</p>
+      <div class="swatches" id="swatches"></div>
+      <div class="sliders" id="colorSliders"></div>
+    </section>
+
+    <section class="group">
+      <p class="section-label">今の眉を薄くする</p>
+      <div class="sliders" id="lightenSliders"></div>
+      <p class="note" id="lightenNote">眉の上下の肌の色で、今の眉を塗りつぶして薄く見せます。前髪が眉にかかっている写真ではうまく消えません。</p>
+    </section>
+
+    <div class="row">
+      <button type="button" class="btn" id="redetect">点を自動で置き直す</button>
+      <button type="button" class="btn" id="resetShape">形を初期値に戻す</button>
+    </div>
+
+    <details class="group">
+      <summary class="section-label">線の見方（小鼻の外側から引く）</summary>
+      <ul class="legend">
+        <li><i class="sw" style="background: var(--c-head)"></i><div><b>眉頭</b> <span>小鼻の外側から真上。眉頭はこの線の上に置く</span></div></li>
+        <li><i class="sw" style="background: var(--c-peak)"></i><div><b>眉山</b> <span>小鼻の外側から黒目の外側を通る線。眉山の目安</span></div></li>
+        <li><i class="sw" style="background: var(--c-tail)"></i><div><b>眉尻</b> <span>小鼻の外側から目尻を通る線。眉尻はこの線の上</span></div></li>
+        <li><i class="sw" style="background: repeating-linear-gradient(90deg, var(--muted) 0 5px, transparent 5px 9px)"></i><div><b>高さ</b> <span>眉頭の高さの水平線。眉尻がこれより下がらないように見る。◎ が眉尻の目安</span></div></li>
+      </ul>
+      <p class="note">重ねる眉は、眉頭を「眉頭の線と眉頭の高さの交点」、眉尻を ◎ に合わせて置きます。基準点を動かすと眉もついてきます。</p>
+    </details>
+
+    <p class="note">基準点（小鼻・黒目の外側・目尻・眉頭）は指でドラッグして直せます。2本指で拡大、1本指で移動。写真はこの端末の中だけで処理し、どこにも送りません。</p>
+  </div>
+</div>
+
+<div class="cam" id="camView" hidden>
+  <video id="camVideo" playsinline muted></video>
+  <div class="cam-oval" id="camOval"></div>
+  <div class="cam-top">
+    <b id="camMsg">カメラを準備しています…</b>
+    <span id="camNums"></span>
+    <div class="cam-bar"><i id="camBar"></i></div>
+  </div>
+  <div class="cam-bottom">
+    <button type="button" class="cam-btn" id="camClose">閉じる</button>
+    <button type="button" class="cam-shutter" id="camShutter" aria-label="撮る"></button>
+    <button type="button" class="cam-btn" id="camFlip">内/外 切替</button>
+    <label class="cam-auto"><input type="checkbox" id="camAuto" checked>正面になったら自動で撮る</label>
+  </div>
+</div>
+
+<script type="module">
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+const statusText = document.getElementById('statusText');
+const spin = document.getElementById('spin');
+
+const COLORS = { head: '#3fd0c9', peak: '#ff5fa2', tail: '#ffc145' };
+const POINT_LABEL = { alar: '小鼻', iris: '黒目の外側', eye: '目尻', head: '眉頭' };
+const POINT_COLOR = { alar: '#ffffff', iris: COLORS.peak, eye: COLORS.tail, head: COLORS.head };
+
+// MediaPipe の顔の点の番号（478点モデル）。左右は「画像の左右」で扱い、検出後に x 座標で振り分ける
+const LM = {
+  eyeOuter: [33, 263],
+  eyeInner: [133, 362],
+  eyeTop: [159, 386],      // 上まぶたのいちばん高い所（楕円法の楕円の下端）
+  irisCenter: [468, 473],
+  irisRing: [[469, 470, 471, 472], [474, 475, 476, 477]],
+  alar: [129, 358],
+  browHeadLow: [55, 285],
+  browUpper: [[70, 63, 105, 66, 107], [300, 293, 334, 296, 336]],
+  browLower: [[46, 53, 52, 65, 55], [276, 283, 282, 295, 285]],
+};
+
+const state = {
+  img: null, W: 0, H: 0, source: 'sample',
+  pts: null,            // { L: {alar, iris, eye, head}, R: {...} } 画像の画素座標
+  brow: null,           // { L: {upper:[], lower:[]}, R: {...} }
+  view: { s: 1, tx: 0, ty: 0 },
+  show: { design: true, lines: true, points: true, mid: false, brow: false, ellipse: true },
+  ellipse: null,        // 楕円法の楕円 { L: {c, a, b}, R: ... }（写真ごと。a=横の半径, b=縦の半径）
+  drag: null,           // { side, key } ドラッグ中の基準点
+  design: null,         // 重ねる眉の設定（defaultDesign() の形）
+  layer: null,          // 重ねる眉の絵（設定や基準点が変わったら null にして作り直す）
+  patches: null,        // 今の眉を薄くする差し替え片（写真・検出が変わったら null）
+  compare: false,       // 「元の写真」ボタンを押している間 true
+};
+
+// ---------- 小さな幾何 ----------
+const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+const add = (a, b) => ({ x: a.x + b.x, y: a.y + b.y });
+const mul = (a, k) => ({ x: a.x * k, y: a.y * k });
+const dot = (a, b) => a.x * b.x + a.y * b.y;
+const len = a => Math.hypot(a.x, a.y);
+const norm = a => { const l = len(a) || 1; return { x: a.x / l, y: a.y / l }; };
+// 直線 p + t*d と q + s*e の交点の t（平行なら null）
+function intersectT(p, d, q, e) {
+  const den = d.x * e.y - d.y * e.x;
+  if (Math.abs(den) < 1e-9) return null;
+  const w = sub(q, p);
+  return (w.x * e.y - w.y * e.x) / den;
+}
+
+// 顔の傾きに合わせた「横」と「上」の向き。両目尻を結ぶ線を横とみなす
+function faceAxes(pts) {
+  const u = norm(sub(pts.R.eye, pts.L.eye));
+  return { u, up: { x: u.y, y: -u.x } };
+}
+
+// 片側のマッピング線を計算する（描画と分けておくと数値だけで確かめられる）
+function mapping(pts, side) {
+  const p = pts[side];
+  const { u, up } = faceAxes(pts);
+  const out = side === 'L' ? mul(u, -1) : u;              // 顔の外側へ向かう横向き
+  const ref = len(sub(p.eye, p.alar));
+  const headTarget = add(p.alar, mul(up, dot(sub(p.head, p.alar), up)));
+  const dPeak = norm(sub(p.iris, p.alar));
+  const dTail = norm(sub(p.eye, p.alar));
+  const tPeak = intersectT(p.alar, dPeak, p.head, u);
+  const tTail = intersectT(p.alar, dTail, p.head, u);
+  const tailTarget = tTail != null && tTail > 0 ? add(p.alar, mul(dTail, tTail)) : null;
+  const reach = Math.max(ref * 1.9, (tTail || 0) * 1.18, (tPeak || 0) * 1.18);
+  const horizEnd = tailTarget ? add(tailTarget, mul(out, ref * 0.25)) : add(p.head, mul(out, ref));
+  return {
+    head: [p.alar, add(headTarget, mul(up, ref * 0.35))],
+    peak: [p.alar, add(p.alar, mul(dPeak, reach))],
+    tail: [p.alar, add(p.alar, mul(dTail, reach))],
+    horiz: [add(p.head, mul(out, -ref * 0.15)), horizEnd],
+    headTarget, tailTarget,
+  };
+}
+window.__mapping = mapping;
+window.__state = state;
+window.__showPose = p => showPose(p);
+
+// ---------- 見本のイラスト（写真を入れる前の表示） ----------
+function makeSample() {
+  const W = 800, H = 1000;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const bg = g.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#d9d3dc'); bg.addColorStop(1, '#bfb6c4');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#4a3a33';
+  g.beginPath(); g.ellipse(400, 470, 330, 420, 0, Math.PI, 0); g.fill();
+  const skin = g.createRadialGradient(400, 520, 60, 400, 560, 420);
+  skin.addColorStop(0, '#f2d6c4'); skin.addColorStop(1, '#ddb49c');
+  g.fillStyle = skin;
+  g.beginPath(); g.ellipse(400, 540, 270, 360, 0, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#4a3a33';
+  g.beginPath(); g.ellipse(400, 250, 300, 150, 0, Math.PI, 0); g.fill();
+  const eye = (cx, flip) => {
+    g.fillStyle = '#fbf7f4';
+    g.beginPath(); g.moveTo(cx - 85 * flip, 500);
+    g.quadraticCurveTo(cx, 455, cx + 72 * flip, 505);
+    g.quadraticCurveTo(cx, 535, cx - 85 * flip, 500); g.fill();
+    g.save(); g.clip();
+    g.fillStyle = '#5a3d2b'; g.beginPath(); g.arc(cx - 2 * flip, 500, 26, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#1b1311'; g.beginPath(); g.arc(cx - 2 * flip, 500, 11, 0, Math.PI * 2); g.fill();
+    g.restore();
+    g.strokeStyle = '#3b2a24'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(cx - 85 * flip, 500); g.quadraticCurveTo(cx, 455, cx + 72 * flip, 505); g.stroke();
+  };
+  eye(290, 1); eye(510, -1);
+  g.fillStyle = 'rgba(80, 55, 45, .55)';
+  SAMPLE_BROW.L.upper.concat([...SAMPLE_BROW.L.lower].reverse()).forEach((p, i) => i ? g.lineTo(p.x, p.y) : (g.beginPath(), g.moveTo(p.x, p.y)));
+  g.fill();
+  SAMPLE_BROW.R.upper.concat([...SAMPLE_BROW.R.lower].reverse()).forEach((p, i) => i ? g.lineTo(p.x, p.y) : (g.beginPath(), g.moveTo(p.x, p.y)));
+  g.fill();
+  g.strokeStyle = '#b98a74'; g.lineWidth = 4; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(385, 520); g.quadraticCurveTo(375, 620, 372, 668); g.stroke();
+  g.beginPath(); g.moveTo(352, 690); g.quadraticCurveTo(338, 660, 362, 650);
+  g.moveTo(448, 690); g.quadraticCurveTo(462, 660, 438, 650);
+  g.moveTo(370, 700); g.quadraticCurveTo(400, 714, 430, 700); g.stroke();
+  g.fillStyle = '#c56f6f';
+  g.beginPath(); g.moveTo(330, 810); g.quadraticCurveTo(400, 770, 470, 810); g.quadraticCurveTo(400, 860, 330, 810); g.fill();
+  return c;
+}
+const SAMPLE_BROW = {
+  L: { upper: [{x:358,y:418},{x:320,y:398},{x:270,y:384},{x:225,y:392},{x:185,y:418}],
+       lower: [{x:356,y:438},{x:320,y:424},{x:272,y:412},{x:228,y:414},{x:188,y:428}] },
+  R: { upper: [{x:442,y:418},{x:480,y:398},{x:530,y:384},{x:575,y:392},{x:615,y:418}],
+       lower: [{x:444,y:438},{x:480,y:424},{x:528,y:412},{x:572,y:414},{x:612,y:428}] },
+};
+const SAMPLE_PTS = {
+  L: { alar: {x:352,y:688}, iris: {x:262,y:500}, eye: {x:205,y:500}, head: {x:354,y:436}, inner: {x:360,y:505}, lid: {x:288,y:479} },
+  R: { alar: {x:448,y:688}, iris: {x:538,y:500}, eye: {x:595,y:500}, head: {x:446,y:436}, inner: {x:440,y:505}, lid: {x:512,y:479} },
+};
+const clonePts = p => JSON.parse(JSON.stringify(p));
+
+// ---------- 重ねる眉の形 ----------
+// 数値はすべて「眉の長さ（眉頭→眉尻）」を1とした割合。顔の大きさや写真の解像度に左右されない
+const PRESETS = {
+  natural: { name: 'ナチュラル', peakPos: .65, arch: .07, thick: .17, taper: .3, length: 1, tailLift: .02, kaku: .3, fade: .5 },
+  flat:    { name: '平行眉',     peakPos: .7,  arch: .025, thick: .18, taper: .35, length: 1, tailLift: 0, kaku: .2, fade: .5 },
+  arch:    { name: 'アーチ眉',   peakPos: .62, arch: .12, thick: .15, taper: .25, length: 1, tailLift: .03, kaku: .05, fade: .5 },
+  angle:   { name: '角眉',       peakPos: .68, arch: .11, thick: .16, taper: .25, length: 1, tailLift: .03, kaku: .9, fade: .4 },
+};
+const SHAPE_KEYS = ['peakPos', 'arch', 'thick', 'taper', 'length', 'tailLift', 'kaku', 'fade'];
+const COLORS_PRESET = [
+  { name: 'ピンクパープル', hex: '#b2508f' },
+  { name: 'アッシュブラウン', hex: '#6b5a4e' },
+  { name: 'ナチュラルブラウン', hex: '#6e4b33' },
+  { name: 'ダークブラウン', hex: '#3f2c22' },
+  { name: 'グレージュ', hex: '#7a6e66' },
+  { name: 'ソフトブラック', hex: '#2e2826' },
+];
+const pickShape = p => Object.fromEntries(SHAPE_KEYS.map(k => [k, p[k]]));
+function defaultDesign() {
+  return {
+    linked: true, side: 'L', preset: 'natural', mode: 'param',
+    prm: { L: pickShape(PRESETS.natural), R: pickShape(PRESETS.natural) },
+    color: COLORS_PRESET[0].hex, opacity: .7, soft: .12, lighten: 0,
+  };
+}
+
+// 片側の眉の「物差し」。原点は眉頭の線と眉頭の高さの交点、x は顔の外向き、y は上向き
+function browFrame(pts, side, prm) {
+  const m = mapping(pts, side);
+  const { u, up } = faceAxes(pts);
+  const out = side === 'L' ? mul(u, -1) : u;
+  const o = m.headTarget;
+  const p = pts[side];
+  const target = m.tailTarget ? dot(sub(m.tailTarget, o), out) : len(sub(p.eye, p.alar)) * 1.2;
+  const Lt = Math.max(10, target);
+  return { o, out, up, Lt, L: Lt * prm.length };
+}
+const fromLocal = (f, x, y) => add(f.o, add(mul(f.out, x), mul(f.up, y)));
+const toLocal = (f, p) => { const d = sub(p, f.o); return { x: dot(d, f.out), y: dot(d, f.up) }; };
+
+// 3点（眉頭・眉山・眉尻）を通る縁を、なめらかな曲線と折れ線の間で混ぜて作る（kaku=1で角ばった眉山）
+function edge(A, C, B, kaku, n = 20) {
+  const tA = mul(sub(C, A), 1), tC = mul(sub(B, A), .5), tB = mul(sub(B, C), 1);
+  const herm = (P0, T0, P1, T1, t) => {
+    const t2 = t * t, t3 = t2 * t;
+    return add(add(mul(P0, 2 * t3 - 3 * t2 + 1), mul(T0, t3 - 2 * t2 + t)), add(mul(P1, -2 * t3 + 3 * t2), mul(T1, t3 - t2)));
+  };
+  const lerp = (a, b, t) => add(a, mul(sub(b, a), t));
+  const out = [];
+  for (const [P0, T0, P1, T1, from] of [[A, tA, C, tC, 0], [C, tC, B, tB, 1]]) {
+    for (let i = from; i <= n; i++) {
+      const t = i / n;
+      out.push(lerp(herm(P0, T0, P1, T1, t), lerp(P0, P1, t), kaku));
+    }
+  }
+  return out;
+}
+
+// 楕円法：目と眉の間に置いた楕円の上側の弧に、眉の下の縁を沿わせる
+// 楕円の向きは顔の横線（両目尻を結ぶ線）に固定し、大きさと位置だけを変える
+function initEllipse(pts) {
+  const { u, up } = faceAxes(pts);
+  const res = {};
+  for (const side of ['L', 'R']) {
+    const p = pts[side], out = side === 'L' ? mul(u, -1) : u;
+    // 楕円は目と眉の間に置く：下端＝目の上のふち、横は眉頭の交点から ◎ までを少し余らせて覆う
+    const m = mapping(pts, side);
+    const h = m.headTarget;
+    const t = m.tailTarget || add(p.eye, mul(out, len(sub(p.eye, p.inner)) * .3));
+    const span = Math.max(12, dot(sub(t, h), out));
+    const a = span / 2 * 1.15;
+    const mid = add(h, mul(out, span / 2));
+    const lidH = dot(sub(p.lid, mid), up);          // 目の上のふちの高さ（mid を 0 とする）
+    // 眉の上の縁を弧に乗せるので、眉頭の端で弧が「眉頭の高さ＋眉の太さ」を通るよう縦の半径を決める
+    // 端（x=±span/2）での弧の高さは b×√(1−(1/1.15)²)
+    const endK = Math.sqrt(1 - (1 / 1.15) ** 2);
+    const th = (state.design ? state.design.prm[side].thick : .17) * span;
+    const b = Math.max(3, (th - lidH) / (1 + endK));
+    const c = add(mid, mul(up, lidH + b));
+    // x0・x1 は眉頭・眉尻の位置（楕円の中心から外向きに測った横の距離）。楕円を動かすと眉もついてくる
+    res[side] = { c, a, b, x0: -span / 2, x1: span / 2 };
+  }
+  return res;
+}
+
+function ellipseBrowShape(pts, side, prm) {
+  const f = browFrame(pts, side, prm);
+  const e = state.ellipse[side];
+  const lim = e.a * .985;
+  const x0 = Math.max(-lim, Math.min(lim, e.x0));
+  let x1 = Math.max(-lim, Math.min(lim, e.x1));
+  if (x1 - x0 < 6) x1 = Math.min(lim, x0 + 6);
+  const Lb = x1 - x0, th = prm.thick * Lb;
+  const arc = x => e.b * Math.sqrt(Math.max(0, 1 - (x / e.a) ** 2));
+  const loc = (x, y) => add(e.c, add(mul(f.out, x), mul(f.up, y)));
+  const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  const N = 40, lower = [], upper = [];
+  for (let i = 0; i <= N; i++) {
+    const s = i / N, x = x0 + Lb * s, y = arc(x);
+    // 眉の上の縁を弧に乗せ、太さは楕円の内向き（法線の逆）に取る。眉尻へ向けて細くする
+    const n = norm({ x: x / (e.a * e.a), y: y / (e.b * e.b) });
+    const t = th * (1 - (1 - prm.taper) * ease((s - .5) / .5));
+    upper.push(loc(x, y));
+    lower.push(loc(x - n.x * t, y - n.y * t));
+  }
+  const tail = add(mul(add(lower[N], upper[N]), .5), mul(f.out, th * prm.taper * .4));
+  const head = add(mul(add(lower[0], upper[0]), .5), mul(f.out, -th * .1));
+  return {
+    frame: { ...f, o: lower[0], L: Lb }, th,
+    outline: [...lower, tail, ...[...upper].reverse(), head],
+    handles: { ellC: e.c, ellT: loc(0, e.b), ellS: loc(e.a, 0), ellH: upper[0], ellE: upper[N] },
+  };
+}
+
+function browShape(pts, side, prm) {
+  if (state.design.mode === 'ellipse' && state.ellipse) return ellipseBrowShape(pts, side, prm);
+  const f = browFrame(pts, side, prm);
+  const L = f.L, th = prm.thick * L, xp = prm.peakPos * L, yp = prm.arch * L, ty = prm.tailLift * L;
+  const tipHalf = th * prm.taper * .5;
+  const upper = edge({ x: 0, y: th * .95 }, { x: xp, y: yp + th * .92 }, { x: L, y: ty + tipHalf }, prm.kaku);
+  const lower = edge({ x: 0, y: 0 }, { x: xp * .97, y: yp }, { x: L, y: ty - tipHalf }, prm.kaku);
+  const local = [
+    ...lower,
+    { x: L + Math.max(tipHalf, th * .05) * .8, y: ty },
+    ...upper.slice().reverse(),
+    { x: -th * .1, y: th * .5 },
+  ];
+  return {
+    frame: f, th,
+    outline: local.map(q => fromLocal(f, q.x, q.y)),
+    handles: { peakH: fromLocal(f, xp, yp + th * .92), tailH: fromLocal(f, L, ty) },
+  };
+}
+window.__browShape = browShape;
+
+// 両側の眉を1枚の透明な絵にしておき、表示のたびに乗算で重ねる（形が変わったときだけ作り直す）
+function buildDesignLayer() {
+  const d = state.design, pts = state.pts;
+  const shapes = ['L', 'R'].map(s => [s, browShape(pts, s, d.prm[s])]);
+  const all = shapes.flatMap(([, sh]) => sh.outline);
+  const pad = Math.max(...shapes.map(([, sh]) => sh.th)) * (d.soft * 2 + .3) + 4;
+  const x0 = Math.floor(Math.min(...all.map(p => p.x)) - pad), y0 = Math.floor(Math.min(...all.map(p => p.y)) - pad);
+  const w = Math.ceil(Math.max(...all.map(p => p.x)) + pad) - x0, h = Math.ceil(Math.max(...all.map(p => p.y)) + pad) - y0;
+  if (w <= 0 || h <= 0 || w * h > 4e7) return null;
+  const layer = document.createElement('canvas'); layer.width = w; layer.height = h;
+  const lg = layer.getContext('2d');
+  for (const [side, sh] of shapes) {
+    const tmp = document.createElement('canvas'); tmp.width = w; tmp.height = h;
+    const g = tmp.getContext('2d');
+    // ぼかしは ctx.filter が古い Safari で効かないため、影（shadowBlur）で作る。図形は画面外に描き、影だけを所定の位置へ落とす
+    const OFF = w + h + 100;
+    g.shadowColor = d.color; g.shadowBlur = Math.max(1, sh.th * d.soft); g.shadowOffsetX = OFF;
+    g.fillStyle = d.color;
+    g.beginPath();
+    sh.outline.forEach((p, i) => (i ? g.lineTo : g.moveTo).call(g, p.x - x0 - OFF, p.y - y0));
+    g.closePath(); g.fill();
+    // 眉頭を薄く始めてだんだん濃くする（パウダー眉のグラデーション）
+    const prm = d.prm[side], f = sh.frame;
+    if (prm.fade > 0) {
+      const a = fromLocal(f, 0, 0), b = fromLocal(f, prm.fade * f.L * .45 + 1, 0);
+      const grad = g.createLinearGradient(a.x - x0, a.y - y0, b.x - x0, b.y - y0);
+      grad.addColorStop(0, `rgba(0,0,0,${1 - prm.fade * .85})`);
+      grad.addColorStop(1, 'rgba(0,0,0,1)');
+      g.shadowColor = 'transparent'; g.shadowOffsetX = 0;
+      g.globalCompositeOperation = 'destination-in';
+      g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    }
+    lg.drawImage(tmp, 0, 0);
+  }
+  return { canvas: layer, x: x0, y: y0, w, h, shapes: Object.fromEntries(shapes) };
+}
+function designLayer() {
+  if (!state.pts) return null;
+  if (!state.layer) state.layer = buildDesignLayer();
+  return state.layer;
+}
+const invalidateLayer = () => { state.layer = null; };
+
+// ---------- 今の眉を薄くする ----------
+// 眉の上下の肌の色を縦方向に補間して眉を塗りつぶした「差し替え片」を作る。強さは描画時の不透明度で変える
+function interpY(poly, x) {
+  if (x <= poly[0].x) return poly[0].y;
+  for (let i = 1; i < poly.length; i++) {
+    if (x <= poly[i].x) {
+      const a = poly[i - 1], b = poly[i], t = (x - a.x) / ((b.x - a.x) || 1);
+      return a.y + (b.y - a.y) * t;
+    }
+  }
+  return poly[poly.length - 1].y;
+}
+function buildLightenPatch(img, contour) {
+  let upper = [...contour.upper].sort((a, b) => a.x - b.x);
+  let lower = [...contour.lower].sort((a, b) => a.x - b.x);
+  const avgY = arr => arr.reduce((s, p) => s + p.y, 0) / arr.length;
+  if (avgY(upper) > avgY(lower)) [upper, lower] = [lower, upper];
+  const xMin = Math.min(upper[0].x, lower[0].x), xMax = Math.max(upper.at(-1).x, lower.at(-1).x);
+  const tAvg = Math.max(4, avgY(lower) - avgY(upper));
+  const padX = tAvg * .7;
+  const X0 = Math.max(0, Math.floor(xMin - padX)), X1 = Math.min(state.W - 1, Math.ceil(xMax + padX));
+  const cols = [];
+  let Y0 = Infinity, Y1 = -Infinity;
+  for (let x = X0; x <= X1; x++) {
+    const xc = Math.max(xMin, Math.min(xMax, x));
+    const yU = interpY(upper, xc), yL = Math.max(yU + 3, interpY(lower, xc));
+    // 顔認識の眉の下側の点は毛の内側に乗りやすいので、下へは広めに取る
+    const m = Math.max(3, (yL - yU) * .5), mb = Math.max(4, (yL - yU) * 1.1);
+    const top = yU - m, bot = yL + mb;
+    cols.push({ x, top, bot, m: Math.min(m, mb) });
+    Y0 = Math.min(Y0, top - 6); Y1 = Math.max(Y1, bot + 6);
+  }
+  Y0 = Math.max(0, Math.floor(Y0)); Y1 = Math.min(state.H - 1, Math.ceil(Y1));
+  const w = X1 - X0 + 1, h = Y1 - Y0 + 1;
+  if (w < 2 || h < 2) return null;
+  const src = img.getContext('2d').getImageData(X0, Y0, w, h);
+  const s = src.data, out = new Uint8ClampedArray(s);
+  const px = (x, y) => { x = Math.max(0, Math.min(w - 1, x)); y = Math.max(0, Math.min(h - 1, y)); return (y * w + x) * 4; };
+  const sample = (cx, y0, y1) => {
+    const c = [0, 0, 0]; let n = 0;
+    for (let x = cx - 1; x <= cx + 1; x++) for (let y = y0; y <= y1; y++) { const i = px(x, y); c[0] += s[i]; c[1] += s[i + 1]; c[2] += s[i + 2]; n++; }
+    return c.map(v => v / n);
+  };
+  const above = cols.map((c, i) => sample(i, Math.round(c.top - Y0) - 4, Math.round(c.top - Y0) - 1));
+  const below = cols.map((c, i) => sample(i, Math.round(c.bot - Y0) + 1, Math.round(c.bot - Y0) + 4));
+  // 列ごとのばらつきで縞が出ないよう、横方向にならす
+  const smooth = arr => arr.map((_, i) => {
+    const c = [0, 0, 0]; let n = 0;
+    for (let j = Math.max(0, i - 5); j <= Math.min(arr.length - 1, i + 5); j++) { c[0] += arr[j][0]; c[1] += arr[j][1]; c[2] += arr[j][2]; n++; }
+    return c.map(v => v / n);
+  });
+  const A = smooth(above), B = smooth(below);
+  const ease = t => t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t);
+  cols.forEach((c, i) => {
+    const wx = c.x < xMin ? 1 - (xMin - c.x) / padX : c.x > xMax ? 1 - (c.x - xMax) / padX : 1;
+    for (let y = Math.max(0, Math.floor(c.top)); y <= Math.min(h + Y0 - 1, Math.ceil(c.bot)); y++) {
+      const f = (y - c.top) / (c.bot - c.top);
+      const wy = Math.min((y - c.top) / (c.m * .8), (c.bot - y) / (c.m * .8));
+      const wgt = ease(wy) * ease(wx);
+      if (wgt <= 0) continue;
+      const k = px(i, y - Y0), noise = (Math.random() - .5) * 5;
+      for (let ch = 0; ch < 3; ch++) {
+        const fill = A[i][ch] + (B[i][ch] - A[i][ch]) * f + noise;
+        out[k + ch] = s[k + ch] * (1 - wgt) + fill * wgt;
+      }
+    }
+  });
+  const patch = document.createElement('canvas'); patch.width = w; patch.height = h;
+  patch.getContext('2d').putImageData(new ImageData(out, w, h), 0, 0);
+  return { canvas: patch, x: X0, y: Y0, w, h };
+}
+function lightenPatches() {
+  if (!state.brow) return [];
+  if (!state.patches) {
+    try { state.patches = ['L', 'R'].map(s => buildLightenPatch(state.img, state.brow[s])).filter(Boolean); }
+    catch (err) { console.error(err); state.patches = []; }
+  }
+  return state.patches;
+}
+
+// ---------- 描画 ----------
+let dpr = 1, cw = 0, ch = 0;
+function resize() {
+  dpr = window.devicePixelRatio || 1;
+  cw = stage.clientWidth; ch = stage.clientHeight;
+  canvas.width = Math.round(cw * dpr); canvas.height = Math.round(ch * dpr);
+  draw();
+}
+// 画面の大きさが変わったら、手で拡大・移動していない限り眉まわりに合わせ直す
+let userMoved = false;
+new ResizeObserver(() => { resize(); if (!userMoved) fitBrows(); }).observe(stage);
+
+const toScreen = (p, v) => ({ x: p.x * v.s + v.tx, y: p.y * v.s + v.ty });
+const toImage = (q, v) => ({ x: (q.x - v.tx) / v.s, y: (q.y - v.ty) / v.s });
+
+function seg(a, b, color, v, dash) {
+  const A = toScreen(a, v), B = toScreen(b, v);
+  ctx.setLineDash(dash || []);
+  ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 3.6;
+  ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.7;
+  ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+  ctx.setLineDash([]);
+}
+function tag(p, text, color, v) {
+  const q = toScreen(p, v);
+  ctx.font = '600 11px ' + getComputedStyle(document.body).fontFamily;
+  const w = ctx.measureText(text).width + 10;
+  ctx.fillStyle = 'rgba(20,16,22,.78)';
+  ctx.beginPath(); ctx.roundRect(q.x - w / 2, q.y - 18, w, 16, 4); ctx.fill();
+  ctx.fillStyle = color; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, q.x, q.y - 10);
+}
+function ring(p, color, v, r) {
+  const q = toScreen(p, v);
+  ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI * 2); ctx.stroke();
+}
+
+function drawScene(v, opts = {}) {
+  if (!state.img) return;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(state.img, v.tx, v.ty, state.W * v.s, state.H * v.s);
+  const pts = state.pts;
+  if (!pts || state.compare) return;
+  const d = state.design;
+  if (d.lighten > 0) {
+    ctx.save(); ctx.globalAlpha = d.lighten;
+    for (const p of lightenPatches()) ctx.drawImage(p.canvas, v.tx + p.x * v.s, v.ty + p.y * v.s, p.w * v.s, p.h * v.s);
+    ctx.restore();
+  }
+  const layer = state.show.design ? designLayer() : null;
+  if (layer) {
+    // 乗算で重ねると、下の肌の明るさや陰影が透けて、描いた色が肌に乗ったように見える
+    ctx.save(); ctx.globalCompositeOperation = 'multiply'; ctx.globalAlpha = d.opacity;
+    ctx.drawImage(layer.canvas, v.tx + layer.x * v.s, v.ty + layer.y * v.s, layer.w * v.s, layer.h * v.s);
+    ctx.restore();
+  }
+  if (state.show.brow && state.brow) {
+    for (const side of ['L', 'R']) for (const k of ['upper', 'lower']) {
+      const arr = state.brow[side][k];
+      for (let i = 1; i < arr.length; i++) seg(arr[i - 1], arr[i], 'rgba(255,255,255,.85)', v, [3, 3]);
+    }
+  }
+  if (state.show.mid) {
+    const { up } = faceAxes(pts);
+    const m = mul(add(pts.L.alar, pts.R.alar), 0.5);
+    const ref = len(sub(pts.L.eye, pts.R.eye));
+    seg(add(m, mul(up, -ref * 0.6)), add(m, mul(up, ref * 1.3)), 'rgba(255,255,255,.9)', v, [2, 5]);
+  }
+  if (state.show.lines) {
+    for (const side of ['L', 'R']) {
+      const m = mapping(pts, side);
+      seg(m.horiz[0], m.horiz[1], 'rgba(255,255,255,.95)', v, [6, 5]);
+      seg(m.head[0], m.head[1], COLORS.head, v);
+      seg(m.peak[0], m.peak[1], COLORS.peak, v);
+      seg(m.tail[0], m.tail[1], COLORS.tail, v);
+      if (!opts.loupe) {
+        tag(m.head[1], '眉頭', COLORS.head, v);
+        // 眉山と眉尻の線は先端が近いので、眉山の札は少し手前に置いて重なりを避ける
+        tag(add(m.peak[0], mul(sub(m.peak[1], m.peak[0]), 0.84)), '眉山', COLORS.peak, v);
+        tag(m.tail[1], '眉尻', COLORS.tail, v);
+      }
+      if (m.tailTarget) { ring(m.tailTarget, COLORS.tail, v, 7); ring(m.tailTarget, COLORS.tail, v, 3); }
+      ring(m.headTarget, COLORS.head, v, 3);
+    }
+  }
+  if (state.show.points || state.drag) {
+    for (const side of ['L', 'R']) for (const key of Object.keys(POINT_LABEL)) {
+      const q = toScreen(pts[side][key], v);
+      const active = state.drag && state.drag.side === side && state.drag.key === key;
+      if (opts.loupe && active) continue;
+      ctx.fillStyle = 'rgba(0,0,0,.35)';
+      ctx.beginPath(); ctx.arc(q.x, q.y, active ? 10 : 7, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = POINT_COLOR[key]; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(q.x, q.y, active ? 7 : 4.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+  }
+  // 楕円法のときは、眉を沿わせる楕円を点線で描く
+  if (state.design.mode === 'ellipse' && state.ellipse && state.show.ellipse) {
+    const ang = Math.atan2(faceAxes(pts).u.y, faceAxes(pts).u.x);
+    for (const side of ['L', 'R']) {
+      const e = state.ellipse[side], c = toScreen(e.c, v);
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.ellipse(c.x, c.y, e.a * v.s, e.b * v.s, ang, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(c.x, c.y, e.a * v.s, e.b * v.s, ang, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+  // 重ねた眉の形を直接動かす取っ手（眉山は◆、眉尻は■、楕円は○）
+  if (layer && (state.show.points || state.drag)) {
+    for (const side of ['L', 'R']) for (const [key, p] of Object.entries(layer.shapes[side].handles)) {
+      const active = state.drag && state.drag.side === side && state.drag.key === key;
+      if (opts.loupe && active) continue;
+      const q = toScreen(p, v);
+      const r = active ? 7 : 5, h = BROW_HANDLE[key];
+      ctx.save(); ctx.translate(q.x, q.y);
+      if (h.shape === 'ring') {
+        ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.arc(0, 0, r + 2.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        if (h.shape === 'diamond') ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(-r - 2.5, -r - 2.5, r * 2 + 5, r * 2 + 5);
+        ctx.fillStyle = h.color; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+        ctx.fillRect(-r, -r, r * 2, r * 2); ctx.strokeRect(-r, -r, r * 2, r * 2);
+      }
+      ctx.restore();
+    }
+  }
+}
+const BROW_HANDLE = {
+  peakH: { label: '眉山（形）', color: COLORS.peak, shape: 'diamond' },
+  tailH: { label: '眉尻（形）', color: COLORS.tail, shape: 'square' },
+  ellC: { label: '楕円の中心', color: '#ffffff', shape: 'ring' },
+  ellT: { label: '楕円の高さ', color: COLORS.peak, shape: 'diamond' },
+  ellS: { label: '楕円の幅', color: '#ffffff', shape: 'square' },
+  ellH: { label: '眉頭', color: COLORS.head, shape: 'square' },
+  ellE: { label: '眉尻', color: COLORS.tail, shape: 'square' },
+};
+// ドラッグ中の点の、今の位置（画像の座標）
+function dragPos(dr) {
+  if (BROW_HANDLE[dr.key]) {
+    const sh = designLayer();
+    return sh ? sh.shapes[dr.side].handles[dr.key] : null;
+  }
+  return state.pts[dr.side][dr.key];
+}
+
+// ドラッグ中は指で点が隠れるので、拡大鏡を指と反対側の上隅に出す
+function drawLoupe() {
+  const { key } = state.drag;
+  const p = dragPos(state.drag);
+  if (!p) return;
+  const q = toScreen(p, state.view);
+  const R = Math.min(70, cw * 0.2);
+  const cx = q.x < cw / 2 ? cw - R - 12 : R + 12, cy = R + 52;
+  const s2 = Math.min(state.view.s * 3, 12);
+  const v2 = { s: s2, tx: cx - p.x * s2, ty: cy - p.y * s2 };
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip();
+  ctx.fillStyle = '#000'; ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+  drawScene(v2, { loupe: true });
+  ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx - 12, cy); ctx.lineTo(cx + 12, cy); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy + 12); ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+  const label = BROW_HANDLE[key] ? BROW_HANDLE[key].label : POINT_LABEL[key];
+  const color = BROW_HANDLE[key] ? BROW_HANDLE[key].color : POINT_COLOR[key];
+  tag({ x: cx, y: cy + R + 20 }, label, color, { s: 1, tx: 0, ty: 0 });
+}
+
+let raf = 0;
+function draw() {
+  if (raf) return;
+  raf = requestAnimationFrame(() => {
+    raf = 0;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawScene(state.view);
+    if (state.drag) drawLoupe();
+  });
+}
+
+// ---------- 表示範囲 ----------
+function fitRect(x0, y0, x1, y1, pad) {
+  const w = x1 - x0, h = y1 - y0;
+  const s = Math.min((cw - pad * 2) / w, (ch - pad * 2 - 40) / h);
+  state.view = { s, tx: cw / 2 - (x0 + w / 2) * s, ty: (ch - 40) / 2 - (y0 + h / 2) * s };
+  userMoved = false;
+  draw();
+}
+function fitAll() { if (state.img) fitRect(0, 0, state.W, state.H, 8); }
+function fitBrows() {
+  if (!state.pts) return fitAll();
+  const all = ['L', 'R'].flatMap(s => [...Object.values(state.pts[s]), mapping(state.pts, s).tailTarget].filter(Boolean));
+  const xs = all.map(p => p.x), ys = all.map(p => p.y);
+  const w = Math.max(...xs) - Math.min(...xs);
+  fitRect(Math.min(...xs) - w * 0.08, Math.min(...ys) - w * 0.2, Math.max(...xs) + w * 0.08, Math.max(...ys) + w * 0.06, 10);
+}
+document.getElementById('zoomAll').onclick = fitAll;
+document.getElementById('zoomBrow').onclick = fitBrows;
+
+// ---------- 指・マウス操作 ----------
+const pointers = new Map();
+let gesture = null;
+function hitPoint(q) {
+  if (!state.pts) return null;
+  let best = null, bestD = 26;
+  for (const side of ['L', 'R']) for (const key of Object.keys(POINT_LABEL)) {
+    const d = len(sub(toScreen(state.pts[side][key], state.view), q));
+    if (d < bestD) { bestD = d; best = { side, key }; }
+  }
+  const layer = state.show.design && state.show.points ? designLayer() : null;
+  if (layer) for (const side of ['L', 'R']) for (const [key, hp] of Object.entries(layer.shapes[side].handles)) {
+    // 眉の取っ手は基準点と近くに並ぶので、同じ距離なら眉の取っ手を優先する
+    const d = len(sub(toScreen(hp, state.view), q)) - 2;
+    if (d < bestD) { bestD = d; best = { side, key }; }
+  }
+  return best;
+}
+
+// 楕円の取っ手：中心は移動、上は縦の半径、横は横の半径。向きは顔の横線に固定
+function applyEllipseHandle(dr, p) {
+  const e = state.ellipse[dr.side];
+  const { u, up } = faceAxes(state.pts);
+  const out = dr.side === 'L' ? mul(u, -1) : u;
+  if (dr.key === 'ellC') { e.c = p; return; }
+  const d = sub(p, e.c);
+  const sides = state.design.linked ? ['L', 'R'] : [dr.side];
+  if (dr.key === 'ellT') { const b = Math.max(4, dot(d, up)); for (const s of sides) state.ellipse[s].b = b; }
+  else if (dr.key === 'ellS') {
+    const a = Math.max(6, dot(d, out), Math.max(Math.abs(e.x0), Math.abs(e.x1)) * 1.02);
+    for (const s of sides) state.ellipse[s].a = a;
+  } else {
+    // 眉頭・眉尻を動かしたら、楕円の横の位置と幅を「眉頭〜眉尻を同じ余白の割合で覆う」ように合わせ直す
+    const x = dot(d, out);
+    let x0 = e.x0, x1 = e.x1;
+    if (dr.key === 'ellH') x0 = Math.min(x, x1 - 8); else x1 = Math.max(x, x0 + 8);
+    const k = Math.max(1.02, e.a / ((e.x1 - e.x0) / 2));
+    const mid = (x0 + x1) / 2;
+    for (const s of sides) {
+      const es = state.ellipse[s], o = s === 'L' ? mul(u, -1) : u;
+      es.c = add(es.c, mul(o, mid));
+      es.x0 = x0 - mid; es.x1 = x1 - mid; es.a = k * (x1 - x0) / 2;
+    }
+  }
+}
+
+// 眉の取っ手を動かした位置から、形の数値（眉山の位置・高さ、長さ・眉尻の高さ）を逆算する
+function applyBrowHandle(dr, p) {
+  if (dr.key.startsWith('ell')) return applyEllipseHandle(dr, p);
+  const d = state.design;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const prm = { ...d.prm[dr.side] };
+  const f = browFrame(state.pts, dr.side, prm);
+  const loc = toLocal(f, p);
+  if (dr.key === 'peakH') {
+    prm.peakPos = clamp(loc.x / f.L, SLIDER_RANGE.peakPos[0], SLIDER_RANGE.peakPos[1]);
+    prm.arch = clamp((loc.y - prm.thick * f.L * .92) / f.L, SLIDER_RANGE.arch[0], SLIDER_RANGE.arch[1]);
+  } else {
+    prm.length = clamp(loc.x / f.Lt, SLIDER_RANGE.length[0], SLIDER_RANGE.length[1]);
+    prm.tailLift = clamp(loc.y / (f.Lt * prm.length), SLIDER_RANGE.tailLift[0], SLIDER_RANGE.tailLift[1]);
+  }
+  const keys = dr.key === 'peakH' ? ['peakPos', 'arch'] : ['length', 'tailLift'];
+  for (const s of d.linked ? ['L', 'R'] : [dr.side]) for (const k of keys) d.prm[s][k] = prm[k];
+  d.preset = null;
+}
+const localPos = e => { const r = canvas.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+
+canvas.addEventListener('pointerdown', e => {
+  try { canvas.setPointerCapture(e.pointerId); } catch {}
+  pointers.set(e.pointerId, localPos(e));
+  if (pointers.size === 1) {
+    const q = localPos(e);
+    const hit = hitPoint(q);
+    if (hit) {
+      const p = dragPos(hit);
+      state.drag = hit;
+      gesture = { type: 'point', offset: sub(toScreen(p, state.view), q) };
+    } else {
+      gesture = { type: 'pan', start: q, view: { ...state.view } };
+    }
+  } else if (pointers.size === 2) {
+    state.drag = null;
+    const [a, b] = [...pointers.values()];
+    gesture = { type: 'pinch', d0: len(sub(a, b)) || 1, m0: mul(add(a, b), 0.5), view: { ...state.view } };
+  }
+  canvas.classList.add('dragging');
+  draw();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, localPos(e));
+  if (!gesture) return;
+  if (gesture.type === 'point' && state.drag) {
+    const q = add(localPos(e), gesture.offset);
+    const p = toImage(q, state.view);
+    if (BROW_HANDLE[state.drag.key]) {
+      applyBrowHandle(state.drag, p);
+      if (state.drag.side !== state.design.side && !state.design.linked) selectSide(state.drag.side);
+      syncControls();
+    } else {
+      state.pts[state.drag.side][state.drag.key] = {
+        x: Math.max(0, Math.min(state.W, p.x)), y: Math.max(0, Math.min(state.H, p.y)),
+      };
+    }
+    invalidateLayer();
+  } else if (gesture.type === 'pan') {
+    userMoved = true;
+    const d = sub(localPos(e), gesture.start);
+    state.view = { ...gesture.view, tx: gesture.view.tx + d.x, ty: gesture.view.ty + d.y };
+  } else if (gesture.type === 'pinch' && pointers.size >= 2) {
+    userMoved = true;
+    const [a, b] = [...pointers.values()];
+    const m = mul(add(a, b), 0.5);
+    const k = len(sub(a, b)) / gesture.d0;
+    const v0 = gesture.view;
+    const anchor = toImage(gesture.m0, v0);
+    const s = Math.max(0.05, Math.min(v0.s * k, 30));
+    state.view = { s, tx: m.x - anchor.x * s, ty: m.y - anchor.y * s };
+  }
+  draw();
+});
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) {
+    if (state.drag && BROW_HANDLE[state.drag.key]) saveDesign();
+    gesture = null; state.drag = null; canvas.classList.remove('dragging');
+  }
+  else if (pointers.size === 1) {
+    const q = [...pointers.values()][0];
+    gesture = { type: 'pan', start: q, view: { ...state.view } };
+  }
+  draw();
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  userMoved = true;
+  const q = localPos(e);
+  const anchor = toImage(q, state.view);
+  const s = Math.max(0.05, Math.min(state.view.s * Math.exp(-e.deltaY * 0.0015), 30));
+  state.view = { s, tx: q.x - anchor.x * s, ty: q.y - anchor.y * s };
+  draw();
+}, { passive: false });
+
+for (const [id, key] of [['showEllipse', 'ellipse'], ['showDesign', 'design'], ['showLines', 'lines'], ['showPoints', 'points'], ['showMid', 'mid'], ['showBrow', 'brow']]) {
+  const el = document.getElementById(id);
+  el.addEventListener('change', () => { state.show[key] = el.checked; draw(); });
+}
+
+// ---------- 状態表示 ----------
+// 案内の帯は写真を隠すので、処理中でなければ7秒で引っ込める
+const statusEl = document.getElementById('status');
+let statusTimer = 0;
+function setStatus(text, busy) {
+  statusText.textContent = text; spin.hidden = !busy; statusEl.hidden = false;
+  clearTimeout(statusTimer);
+  if (!busy) statusTimer = setTimeout(() => { statusEl.hidden = true; }, 7000);
+}
+
+// ---------- 顔の点の自動検出 ----------
+// 部品とモデルは1回だけ読み、写真用（IMAGE）と動画用（VIDEO）の検出器をそれぞれ作る
+let assetsPromise = null;
+function getAssets() {
+  if (!assetsPromise) {
+    assetsPromise = (async () => {
+      const { FaceLandmarker } = await import('./vendor/vision_bundle.mjs');
+      const base = document.baseURI;
+      const fileset = {
+        wasmLoaderPath: new URL('vendor/wasm/vision_wasm_internal.js', base).href,
+        wasmBinaryPath: new URL('vendor/wasm/vision_wasm_internal.wasm', base).href,
+      };
+      // claude.ai の公開先が .task 形式を配れないため、モデルは base64 の文字ファイルにして置き、ここで元のバイト列へ戻す
+      const b64 = await (await fetch(new URL('vendor/face_landmarker.task.b64.txt', base))).text();
+      const bin = atob(b64.trim());
+      const model = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) model[i] = bin.charCodeAt(i);
+      return { FaceLandmarker, fileset, model };
+    })();
+    assetsPromise.catch(() => { assetsPromise = null; });
+  }
+  return assetsPromise;
+}
+const landmarkers = {};
+let landmarkerPromise = null;   // 写真用の検出器を読み込み済みか（状態表示の文言に使う）
+function getLandmarker(mode = 'IMAGE') {
+  if (!landmarkers[mode]) {
+    landmarkers[mode] = getAssets().then(({ FaceLandmarker, fileset, model }) =>
+      FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetBuffer: model, delegate: 'CPU' },
+        runningMode: mode, numFaces: 1, outputFacialTransformationMatrixes: true,
+      }));
+    landmarkers[mode].catch(() => { delete landmarkers[mode]; });
+  }
+  if (mode === 'IMAGE') landmarkerPromise = landmarkers[mode];
+  return landmarkers[mode];
+}
+
+// 検出結果（0〜1の座標）から、画像の左右ごとの基準点を作る
+function pointsFromLandmarks(lm, W, H) {
+  const P = i => ({ x: lm[i].x * W, y: lm[i].y * H });
+  // MediaPipe の「右・左」は写真の向きで入れ替わりうるので、目尻の x 座標で画像の左右に振り分ける
+  const a = 0, b = 1;
+  const order = P(LM.eyeOuter[a]).x <= P(LM.eyeOuter[b]).x ? [a, b] : [b, a];
+  const pts = {}, brow = {};
+  ['L', 'R'].forEach((side, n) => {
+    const k = order[n];
+    const eye = P(LM.eyeOuter[k]);
+    // 虹彩の中心は「目尻に近い方」を同じ側とみなす
+    const ic = [0, 1].map(j => P(LM.irisCenter[j]));
+    const j = len(sub(ic[0], eye)) <= len(sub(ic[1], eye)) ? 0 : 1;
+    const c = ic[j];
+    const r = LM.irisRing[j].map(i => len(sub(P(i), c))).reduce((s, v) => s + v, 0) / 4;
+    const iris = add(c, mul(norm(sub(eye, c)), r));
+    const alars = LM.alar.map(P);
+    const alar = alars.reduce((best, q) => len(sub(q, eye)) < len(sub(best, eye)) ? q : best);
+    const head = P(LM.browHeadLow[k]);
+    pts[side] = { alar, iris, eye, head, inner: P(LM.eyeInner[k]), lid: P(LM.eyeTop[k]) };
+    brow[side] = { upper: LM.browUpper[k].map(P), lower: LM.browLower[k].map(P) };
+  });
+  // 眉頭は小鼻からの縦線の上に置いた位置から始める（高さは今の眉頭の下端）
+  const { up } = faceAxes(pts);
+  for (const side of ['L', 'R']) {
+    const p = pts[side];
+    p.head = add(p.alar, mul(up, dot(sub(p.head, p.alar), up)));
+  }
+  return { pts, brow };
+}
+window.__pointsFromLandmarks = pointsFromLandmarks;
+
+// 顔が見つからないときの仮置き。画像の中央に見本と同じ比率で並べる
+function defaultPoints(W, H) {
+  const s = Math.min(W / 800, H / 1000) * 0.9;
+  const ox = W / 2 - 400 * s, oy = H / 2 - 520 * s;
+  const pts = clonePts(SAMPLE_PTS);
+  for (const side of ['L', 'R']) for (const k of Object.keys(pts[side])) {
+    const p = pts[side][k]; pts[side][k] = { x: ox + p.x * s, y: oy + p.y * s };
+  }
+  return pts;
+}
+
+async function detect() {
+  if (state.source === 'sample') {
+    setPoints(clonePts(SAMPLE_PTS), SAMPLE_BROW);
+    showPose(null);
+    setStatus('見本のイラストです。「撮影する」か「写真を選ぶ」で顔写真を入れてください', false);
+    fitBrows(); return;
+  }
+  const img = state.img;
+  try {
+    setStatus(landmarkerPromise ? '顔の点を探しています…' : '1/2 顔認識の部品を読み込んでいます（初回のみ・約16MB）…', true);
+    const lmk = await getLandmarker();
+    if (state.img !== img) return;
+    setStatus('2/2 顔の点を探しています…', true);
+    await new Promise(r => setTimeout(r, 30));
+    const res = lmk.detect(img);
+    window.__lastRes = res;
+    if (state.img !== img) return;
+    const face = res.faceLandmarks && res.faceLandmarks[0];
+    if (!face || face.length < 478) throw new Error('no-face');
+    const { pts, brow } = pointsFromLandmarks(face, state.W, state.H);
+    setPoints(pts, brow);
+    showPose(poseFromMatrix(res.facialTransformationMatrixes && res.facialTransformationMatrixes[0]));
+    setStatus('線を引きました。ずれている点は指で動かして直してください', false);
+  } catch (err) {
+    console.error(err);
+    setPoints(defaultPoints(state.W, state.H), null);
+    showPose(null);
+    setStatus(err && err.message === 'no-face'
+      ? '顔が見つかりませんでした。正面を向いた明るい写真で試すか、点を指で動かして合わせてください'
+      : '自動認識が使えませんでした。点を指で動かして合わせてください', false);
+  }
+  fitBrows();
+}
+document.getElementById('redetect').onclick = detect;
+
+// ---------- 顔の向きの判定 ----------
+// MediaPipe が返す顔の姿勢（4×4行列、列優先）から角度を出す。符号は試験用写真の反転・回転で確かめた：
+// 左右 yaw>0 = 顔が画面の右を向く／傾き roll<0 = 頭のてっぺんが画面の右へ傾く
+// 上下 pitch>0 = うつむき（顔の座標は y 上向き・z カメラ向きなので、x軸回りの正の回転でおでこがカメラへ寄る）
+const POSE_LIMIT = { yaw: 4, pitch: 8, roll: 8 };   // 度。左右の向きは撮った後で直せないので厳しめ
+function poseFromMatrix(mat) {
+  if (!mat || !mat.data) return null;
+  const m = mat.data, d = 180 / Math.PI;
+  return {
+    yaw: Math.asin(Math.max(-1, Math.min(1, -m[2]))) * d,
+    pitch: Math.atan2(m[6], m[10]) * d,
+    roll: Math.atan2(m[1], m[0]) * d,
+  };
+}
+// mirrored: 鏡のように左右反転して見せている画面（内カメラの映像）で案内するとき true
+function judgePose(p, mirrored = false) {
+  const tips = [];
+  const yaw = mirrored ? -p.yaw : p.yaw;
+  if (Math.abs(p.yaw) > POSE_LIMIT.yaw) tips.push(yaw > 0 ? '顔が画面の右を向いています。少し左（画面の左）へ向けてください' : '顔が画面の左を向いています。少し右（画面の右）へ向けてください');
+  if (Math.abs(p.pitch) > POSE_LIMIT.pitch) tips.push(p.pitch > 0 ? 'うつむいています。あごを少し上げてください' : '上を向いています。あごを少し引いてください');
+  if (Math.abs(p.roll) > POSE_LIMIT.roll) tips.push('首がかしげています。まっすぐにしてください');
+  return tips;
+}
+function showPose(p) {
+  state.pose = p;
+  const card = document.getElementById('poseCard'), badge = document.getElementById('poseBadge');
+  card.hidden = badge.hidden = !p;
+  if (!p) return;
+  const tips = judgePose(p), ok = tips.length === 0;
+  card.className = 'pose-card ' + (ok ? 'ok' : 'bad');
+  badge.className = 'pose-badge' + (ok ? '' : ' bad');
+  badge.textContent = ok ? '正面 OK' : '向きがずれています';
+  document.getElementById('poseTitle').textContent = ok ? '正面を向いています' : '正面からずれています。撮り直しをおすすめします';
+  const num = (label, v, lim) => `<span class="${Math.abs(v) > lim ? 'over' : ''}">${label} ${Math.abs(v).toFixed(1)}°</span>`;
+  document.getElementById('poseNums').innerHTML =
+    num('左右', p.yaw, POSE_LIMIT.yaw) + num('上下', p.pitch, POSE_LIMIT.pitch) + num('傾き', p.roll, POSE_LIMIT.roll) +
+    `<span>目安：左右 ${POSE_LIMIT.yaw}°・上下 ${POSE_LIMIT.pitch}°・傾き ${POSE_LIMIT.roll}° 以内</span>`;
+  document.getElementById('poseMsg').textContent = ok
+    ? 'このまま線を引いて大丈夫です。'
+    : tips.join('。') + '。' + (Math.abs(p.yaw) > POSE_LIMIT.yaw ? '左右の向きのずれは、撮った後では直せません（片方の眉が短く写ります）。' : '');
+  document.getElementById('retake').hidden = ok;
+}
+
+// ---------- 写真の読み込み ----------
+const MAX_SIDE = 2000;
+async function loadImageSource(blob) {
+  const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  const k = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  bmp.close && bmp.close();
+  return c;
+}
+async function usePhoto(blob) {
+  try {
+    setStatus('写真を読み込んでいます…', true);
+    await useCanvas(await loadImageSource(blob));
+  } catch (err) {
+    console.error(err);
+    setStatus('この写真は読み込めませんでした。JPEG か PNG の写真を選んでください', false);
+  }
+}
+async function useCanvas(c) {
+  state.img = c; state.W = c.width; state.H = c.height; state.source = 'photo';
+  setPoints(null, null);
+  showPose(null);
+  fitAll();
+  await detect();
+}
+// ---------- カメラで向きを確かめながら撮る ----------
+// claude.ai の公開ページではカメラ映像が使えない（GitHub Pages 版で使う）。使えなければ案内して終わる
+const cam = {
+  view: document.getElementById('camView'), video: document.getElementById('camVideo'),
+  oval: document.getElementById('camOval'), msg: document.getElementById('camMsg'),
+  nums: document.getElementById('camNums'), bar: document.getElementById('camBar'),
+  auto: document.getElementById('camAuto'),
+  stream: null, facing: 'user', raf: 0, lastT: 0, okSince: 0, open: false, lmk: null,
+};
+const HOLD_MS = 1000;   // 正面の状態がこの時間続いたら自動で撮る（一瞬だけ正面になったときの誤撮影を防ぐ）
+
+async function openCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return cameraUnavailable();
+  try {
+    cam.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: cam.facing, width: { ideal: 1920 }, height: { ideal: 1440 } }, audio: false,
+    });
+  } catch (err) {
+    console.error(err);
+    return cameraUnavailable(err && err.name === 'NotAllowedError');
+  }
+  cam.open = true; cam.view.hidden = false; cam.okSince = 0;
+  cam.video.srcObject = cam.stream;
+  // 内カメラは鏡のように左右反転して見せる（撮る写真は反転しない）
+  cam.video.style.transform = cam.facing === 'user' ? 'scaleX(-1)' : '';
+  try { await cam.video.play(); } catch {}
+  setCam('顔認識を準備しています…', '', 'none', 0);
+  try { cam.lmk = await getLandmarker('VIDEO'); } catch (err) { console.error(err); cam.lmk = null; }
+  if (!cam.lmk) setCam('顔認識が使えません。正面を向いて撮影ボタンを押してください', '', 'none', 0);
+  cam.raf = requestAnimationFrame(camLoop);
+}
+function cameraUnavailable(denied) {
+  setStatus(denied
+    ? 'カメラの使用が許可されていません。ブラウザの設定でこのページのカメラを許可してください'
+    : 'このページではカメラの映像を使えません。「撮影する」で撮るか、GitHub Pages 版を開いてください', false);
+}
+function closeCamera() {
+  cam.open = false; cancelAnimationFrame(cam.raf);
+  if (cam.stream) cam.stream.getTracks().forEach(t => t.stop());
+  cam.stream = null; cam.view.hidden = true;
+}
+function setCam(msg, nums, kind, progress) {
+  cam.msg.textContent = msg; cam.nums.textContent = nums;
+  cam.oval.className = 'cam-oval' + (kind === 'ok' ? ' ok' : kind === 'bad' ? ' bad' : '');
+  cam.bar.style.width = Math.round(progress * 100) + '%';
+}
+function camLoop(now) {
+  if (!cam.open) return;
+  cam.raf = requestAnimationFrame(camLoop);
+  if (!cam.lmk || cam.video.readyState < 2 || now - cam.lastT < 90) return;
+  cam.lastT = now;
+  let res;
+  try { res = cam.lmk.detectForVideo(cam.video, now); } catch (err) { console.error(err); return; }
+  const face = res.faceLandmarks && res.faceLandmarks[0];
+  const pose = face && poseFromMatrix(res.facialTransformationMatrixes && res.facialTransformationMatrixes[0]);
+  if (!face || !pose) { cam.okSince = 0; return setCam('顔が見つかりません。枠の中に顔を入れてください', '', 'bad', 0); }
+  const vw = cam.video.videoWidth, vh = cam.video.videoHeight;
+  // 顔の幅（両ほおの端 234・454）と鼻先（1）の位置で、近さと位置を確かめる
+  const faceW = Math.abs(face[454].x - face[234].x) * vw / Math.min(vw, vh);
+  const tips = judgePose(pose, cam.facing === 'user');
+  if (faceW < .32) tips.push('もう少し近づいてください');
+  else if (faceW > .9) tips.push('少し離れてください');
+  if (Math.abs(face[1].x - .5) > .15 || Math.abs(face[1].y - .5) > .2) tips.push('顔を枠の真ん中に入れてください');
+  const nums = `左右 ${Math.abs(pose.yaw).toFixed(1)}°・上下 ${Math.abs(pose.pitch).toFixed(1)}°・傾き ${Math.abs(pose.roll).toFixed(1)}°`;
+  if (tips.length) { cam.okSince = 0; return setCam(tips[0], nums, 'bad', 0); }
+  if (!cam.okSince) cam.okSince = now;
+  const progress = Math.min(1, (now - cam.okSince) / HOLD_MS);
+  setCam(cam.auto.checked ? '正面です。そのまま動かないでください' : '正面です。撮影ボタンを押してください', nums, 'ok', cam.auto.checked ? progress : 1);
+  if (cam.auto.checked && progress >= 1) capture();
+}
+function capture() {
+  const v = cam.video;
+  if (!v.videoWidth) return;
+  const k = Math.min(1, MAX_SIDE / Math.max(v.videoWidth, v.videoHeight));
+  const c = document.createElement('canvas');
+  c.width = Math.round(v.videoWidth * k); c.height = Math.round(v.videoHeight * k);
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  closeCamera();
+  useCanvas(c).catch(err => { console.error(err); setStatus('撮った写真を読み込めませんでした', false); });
+}
+document.getElementById('liveCam').addEventListener('click', openCamera);
+document.getElementById('camClose').addEventListener('click', closeCamera);
+document.getElementById('camShutter').addEventListener('click', capture);
+document.getElementById('camFlip').addEventListener('click', async () => {
+  cam.facing = cam.facing === 'user' ? 'environment' : 'user';
+  closeCamera(); await openCamera();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden && cam.open) closeCamera(); });
+window.__cam = cam;
+
+// 選択画面が開くとページは隠れるか焦点を失う。1.5秒たってもどちらも起きなければ、開けない環境とみなして案内を出す
+const pickHint = document.getElementById('pickHint');
+let pickTimer = 0;
+const pickOpened = () => { clearTimeout(pickTimer); pickTimer = 0; };
+window.addEventListener('blur', pickOpened);
+document.addEventListener('visibilitychange', () => { if (document.hidden) pickOpened(); });
+for (const id of ['cam', 'pick', 'cam2']) {
+  const input = document.getElementById(id);
+  input.addEventListener('click', () => {
+    clearTimeout(pickTimer);
+    pickTimer = setTimeout(() => { pickHint.hidden = false; }, 1500);
+  });
+  input.addEventListener('change', () => { pickOpened(); if (input.files[0]) usePhoto(input.files[0]); input.value = ''; });
+}
+// 貼り付け・ドラッグでも写真を入れられるようにしておく（選択画面が使えない環境の逃げ道）
+document.addEventListener('paste', e => {
+  const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith('image/'));
+  if (f) usePhoto(f);
+});
+stage.addEventListener('dragover', e => e.preventDefault());
+stage.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'));
+  if (f) usePhoto(f);
+});
+window.__loadURL = async url => usePhoto(await (await fetch(url)).blob());
+
+// ---------- 起動 ----------
+// ---------- 眉の設定の操作盤 ----------
+function setPoints(pts, brow) {
+  state.pts = pts; state.brow = brow;
+  state.ellipse = pts ? initEllipse(pts) : null;
+  state.patches = null; invalidateLayer();
+  const lt = document.getElementById('lighten');
+  if (lt) lt.disabled = !brow;
+  document.getElementById('lightenNote').textContent = brow
+    ? '眉の上下の肌の色で今の眉を塗りつぶし、薄く見せます。前髪が眉にかかっている写真ではうまく消えません。'
+    : '今の眉の位置が自動で分からなかったため、この写真では使えません。';
+}
+
+const pct = v => Math.round(v * 100) + '%';
+const signedPct = v => (v > 0 ? '+' : '') + Math.round(v * 100) + '%';
+const SLIDERS = {
+  shape: [
+    { key: 'peakPos', label: '眉山の位置（眉頭から）', min: .45, max: .85, step: .01, fmt: pct },
+    { key: 'arch', label: '眉山の高さ', min: 0, max: .25, step: .005, fmt: pct },
+    { key: 'thick', label: '太さ', min: .08, max: .28, step: .005, fmt: pct },
+    { key: 'taper', label: '眉尻の太さ', min: .05, max: .7, step: .01, fmt: pct },
+    { key: 'length', label: '長さ（◎まで＝100%）', min: .8, max: 1.15, step: .01, fmt: pct },
+    { key: 'tailLift', label: '眉尻の高さ（水平線から）', min: -.06, max: .12, step: .005, fmt: signedPct },
+    { key: 'kaku', label: '眉山のかど', min: 0, max: 1, step: .05, fmt: pct },
+    { key: 'fade', label: '眉頭のぼかし', min: 0, max: 1, step: .05, fmt: pct },
+  ],
+  color: [
+    { key: 'opacity', label: '濃さ', min: .1, max: .9, step: .01, fmt: pct },
+    { key: 'soft', label: 'ふちのぼかし', min: .02, max: .35, step: .01, fmt: pct },
+  ],
+  lighten: [
+    { key: 'lighten', label: '薄くする強さ', min: 0, max: 1, step: .05, fmt: pct },
+  ],
+};
+const SLIDER_RANGE = Object.fromEntries(Object.values(SLIDERS).flat().map(s => [s.key, [s.min, s.max]]));
+const SHAPE_SET = new Set(SHAPE_KEYS);
+
+function valueOf(key) {
+  const d = state.design;
+  return SHAPE_SET.has(key) ? d.prm[d.side][key] : d[key];
+}
+function setValue(key, v) {
+  const d = state.design;
+  if (SHAPE_SET.has(key)) {
+    for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s][key] = v;
+    d.preset = null;
+  } else d[key] = v;
+  if (key !== 'opacity' && key !== 'lighten') invalidateLayer();
+}
+
+const sliderEls = {};
+for (const [group, list] of Object.entries(SLIDERS)) {
+  const box = document.getElementById(group + 'Sliders');
+  for (const sp of list) {
+    const wrap = document.createElement('label');
+    wrap.className = 'slider';
+    wrap.innerHTML = `<span>${sp.label}</span><output></output><input type="range" id="${sp.key}" min="${sp.min}" max="${sp.max}" step="${sp.step}">`;
+    const input = wrap.querySelector('input'), out = wrap.querySelector('output');
+    input.addEventListener('input', () => {
+      setValue(sp.key, +input.value); out.textContent = sp.fmt(+input.value);
+      if (SHAPE_SET.has(sp.key)) syncPresets();
+      draw();
+    });
+    input.addEventListener('change', saveDesign);
+    sliderEls[sp.key] = { input, out, sp };
+    box.appendChild(wrap);
+  }
+}
+
+const presetBox = document.getElementById('presets');
+for (const [id, p] of Object.entries(PRESETS)) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip'; b.dataset.preset = id; b.textContent = p.name;
+  b.addEventListener('click', () => {
+    const d = state.design;
+    for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s] = pickShape(p);
+    d.preset = id; invalidateLayer(); syncControls(); saveDesign(); draw();
+  });
+  presetBox.appendChild(b);
+}
+function syncPresets() {
+  for (const b of presetBox.children) b.setAttribute('aria-pressed', String(b.dataset.preset === state.design.preset));
+}
+
+const swatchBox = document.getElementById('swatches');
+for (const c of COLORS_PRESET) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'swatch'; b.dataset.hex = c.hex;
+  b.innerHTML = `<i style="background:${c.hex}"></i>${c.name}`;
+  b.addEventListener('click', () => { state.design.color = c.hex; invalidateLayer(); syncControls(); saveDesign(); draw(); });
+  swatchBox.appendChild(b);
+}
+const custom = document.createElement('label');
+custom.className = 'swatch'; custom.innerHTML = '<input type="color" id="customColor" aria-label="好きな色を選ぶ">好きな色';
+swatchBox.appendChild(custom);
+const customInput = custom.querySelector('input');
+customInput.addEventListener('input', () => { state.design.color = customInput.value; invalidateLayer(); syncControls(); draw(); });
+customInput.addEventListener('change', saveDesign);
+
+const modeSeg = document.getElementById('modeSeg');
+for (const b of modeSeg.querySelectorAll('button')) b.addEventListener('click', () => {
+  state.design.mode = b.dataset.mode;
+  if (state.pts && !state.ellipse) state.ellipse = initEllipse(state.pts);
+  invalidateLayer(); syncControls(); saveDesign(); draw();
+});
+const linkedEl = document.getElementById('linked');
+const sideSeg = document.getElementById('sideSeg');
+function selectSide(side) { state.design.side = side; syncControls(); }
+linkedEl.addEventListener('change', () => {
+  const d = state.design;
+  d.linked = linkedEl.checked;
+  // 連動に戻すときは、いま調整している側の形を反対側へ写す
+  if (d.linked) { const other = d.side === 'L' ? 'R' : 'L'; d.prm[other] = { ...d.prm[d.side] }; invalidateLayer(); }
+  syncControls(); saveDesign(); draw();
+});
+for (const b of sideSeg.querySelectorAll('button')) b.addEventListener('click', () => { selectSide(b.dataset.side); saveDesign(); });
+
+function syncControls() {
+  const d = state.design;
+  for (const { input, out, sp } of Object.values(sliderEls)) {
+    const v = valueOf(sp.key);
+    input.value = v; out.textContent = sp.fmt(v);
+  }
+  syncPresets();
+  for (const b of swatchBox.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.hex === d.color));
+  custom.setAttribute('aria-pressed', String(!COLORS_PRESET.some(c => c.hex === d.color)));
+  customInput.value = d.color;
+  linkedEl.checked = d.linked;
+  // 楕円法では眉山の位置・高さ・眉尻の高さ・かどは楕円が決めるので、スライダーを止める
+  const ell = d.mode === 'ellipse';
+  for (const k of ['peakPos', 'arch', 'tailLift', 'kaku', 'length']) {
+    sliderEls[k].input.disabled = ell; sliderEls[k].input.closest('.slider').classList.toggle('off', ell);
+  }
+  for (const b of modeSeg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.mode === d.mode));
+  document.getElementById('ellipseNote').hidden = !ell;
+  document.getElementById('paramNote').hidden = ell;
+  document.getElementById('showEllipseChip').hidden = !ell;
+  sideSeg.hidden = d.linked;
+  for (const b of sideSeg.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.side === d.side));
+}
+
+document.getElementById('resetShape').addEventListener('click', () => {
+  const { lighten, mode } = state.design;
+  state.design = defaultDesign(); Object.assign(state.design, { lighten, mode });
+  if (state.pts) state.ellipse = initEllipse(state.pts);
+  invalidateLayer(); syncControls(); saveDesign(); draw();
+});
+
+// 押している間だけ、重ねた眉や線を消して元の写真を見せる
+const compareBtn = document.getElementById('compare');
+const setCompare = on => { state.compare = on; compareBtn.classList.toggle('on', on); draw(); };
+compareBtn.addEventListener('pointerdown', e => { e.preventDefault(); setCompare(true); });
+for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) compareBtn.addEventListener(ev, () => setCompare(false));
+compareBtn.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') setCompare(true); });
+compareBtn.addEventListener('keyup', () => setCompare(false));
+compareBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+// 設定はこの端末のブラウザにだけ覚えておく（次に開いたときの続き用）
+const STORE_KEY = 'browsim.design.v3';
+function saveDesign() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state.design)); } catch {} }
+function loadDesign() {
+  const d = defaultDesign();
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    if (saved && saved.prm && saved.prm.L && saved.prm.R) {
+      for (const s of ['L', 'R']) for (const k of SHAPE_KEYS) if (typeof saved.prm[s][k] === 'number') d.prm[s][k] = saved.prm[s][k];
+      for (const k of ['opacity', 'soft', 'lighten']) if (typeof saved[k] === 'number') d[k] = saved[k];
+      if (typeof saved.color === 'string') d.color = saved.color;
+      d.linked = saved.linked !== false; d.side = saved.side === 'R' ? 'R' : 'L';
+      d.mode = saved.mode === 'ellipse' ? 'ellipse' : 'param';
+      d.preset = typeof saved.preset === 'string' && PRESETS[saved.preset] ? saved.preset : null;
+    }
+  } catch {}
+  return d;
+}
+state.design = loadDesign();
+syncControls();
+
+state.img = makeSample(); state.W = 800; state.H = 1000; state.source = 'sample';
+resize();
+detect();
+</script>
+
+</body></html>
