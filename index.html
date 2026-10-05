@@ -123,6 +123,8 @@ details.group summary { cursor: pointer; margin: 0; }
 .slider { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; font-size: 13px; }
 .slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
 .slider input { grid-column: 1 / -1; width: 100%; margin: 2px 0 6px; accent-color: var(--accent); }
+.preset-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
+.preset-group { font-size: 12px; color: var(--muted); min-width: 4.5em; }
 .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 button.chip { font: inherit; font-size: 13px; color: var(--ink); }
 .side-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
@@ -500,11 +502,15 @@ const clonePts = p => JSON.parse(JSON.stringify(p));
 
 // ---------- 重ねる眉の形 ----------
 // 数値はすべて「眉の長さ（眉頭→眉尻）」を1とした割合。顔の大きさや写真の解像度に左右されない
+// soft はふちのぼかし、ellRatio は楕円法の楕円の縦横比（男性向けは平たい楕円で直線的な眉にする）
 const PRESETS = {
-  natural: { name: 'ナチュラル', peakPos: .65, arch: .07, thick: .17, taper: .3, length: 1, tailLift: .02, kaku: .3, fade: .5 },
-  flat:    { name: '平行眉',     peakPos: .7,  arch: .025, thick: .18, taper: .35, length: 1, tailLift: 0, kaku: .2, fade: .5 },
-  arch:    { name: 'アーチ眉',   peakPos: .62, arch: .12, thick: .15, taper: .25, length: 1, tailLift: .03, kaku: .05, fade: .5 },
-  angle:   { name: '角眉',       peakPos: .68, arch: .11, thick: .16, taper: .25, length: 1, tailLift: .03, kaku: .9, fade: .4 },
+  natural: { group: '女性向け', name: 'ナチュラル', peakPos: .65, arch: .07, thick: .17, taper: .3, length: 1, tailLift: .02, kaku: .3, fade: .5, soft: .12, ellRatio: .47 },
+  flat:    { group: '女性向け', name: '平行眉',     peakPos: .7,  arch: .025, thick: .18, taper: .35, length: 1, tailLift: 0, kaku: .2, fade: .5, soft: .12, ellRatio: .4 },
+  arch:    { group: '女性向け', name: 'アーチ眉',   peakPos: .62, arch: .12, thick: .15, taper: .25, length: 1, tailLift: .03, kaku: .05, fade: .5, soft: .12, ellRatio: .52 },
+  angle:   { group: '女性向け', name: '角眉',       peakPos: .68, arch: .11, thick: .16, taper: .25, length: 1, tailLift: .03, kaku: .9, fade: .4, soft: .12, ellRatio: .47 },
+  // 男性向け：太め・直線的・眉尻をあまり細くしない・眉頭のぼかし弱め・ふちをくっきり
+  menStraight: { group: '男性向け', name: 'ストレート', peakPos: .7, arch: .03, thick: .24, taper: .55, length: 1, tailLift: .02, kaku: .5, fade: .25, soft: .05, ellRatio: .3 },
+  menSharp:    { group: '男性向け', name: 'きりっと（上がり眉）', peakPos: .68, arch: .08, thick: .22, taper: .45, length: 1, tailLift: .07, kaku: .95, fade: .2, soft: .04, ellRatio: .36 },
 };
 const SHAPE_KEYS = ['peakPos', 'arch', 'thick', 'taper', 'length', 'tailLift', 'kaku', 'fade', 'headOut', 'tailOut'];
 // 楕円法だけで使う値（眉頭・眉尻が楕円の外へはみ出す長さ。楕円の横の半径 a に対する割合）
@@ -578,7 +584,9 @@ function initEllipse(pts) {
     // 眉頭の線〜眉尻の目安（◎）の間が、図の比率（中心から −0.52a 〜 +1.2a）になるよう横の半径を決める
     const tailOut = state.design ? state.design.prm[side].tailOut : SHAPE_EXTRA.tailOut;
     const a = span / (1 + tailOut - ELL.head);
-    const b = a * ELL.ratio;
+    // 選んでいるプリセットに楕円の縦横比があればそれを使う（男性向けは平たい楕円）
+    const preset = state.design && PRESETS[state.design.preset];
+    const b = a * (preset ? preset.ellRatio : ELL.ratio);
     const cx = add(h, mul(out, -ELL.head * a));
     const lidH = dot(sub(p.lid, cx), up);
     const c = add(cx, mul(up, lidH + b));             // 楕円の下端を上まぶたの高さに置く
@@ -621,7 +629,8 @@ function ellipseBrowShape(pts, side, prm) {
   }
   // 下の縁：眉頭の線（x0）から、上の縁の内向きの法線方向に太さぶん下げる。太さは眉尻へ向けて細くする
   const x0 = Math.max(up[0].x + 2, Math.min(e.x0, x1 - 6));
-  const th = prm.thick * 2.2 * e.b;
+  // 太さは楕円の横幅を基準にする（縦横比 0.47 のとき従来の 2.2×b と同じ）。平たい楕円でも眉が細くならない
+  const th = prm.thick * 1.03 * e.a;
   const low = [];
   let headUp = null;
   for (let i = 0; i < up.length; i++) {
@@ -1546,19 +1555,37 @@ for (const [group, list] of Object.entries(SLIDERS)) {
 }
 
 const presetBox = document.getElementById('presets');
-for (const [id, p] of Object.entries(PRESETS)) {
-  const b = document.createElement('button');
-  b.type = 'button'; b.className = 'chip'; b.dataset.preset = id; b.textContent = p.name;
-  b.addEventListener('click', () => {
-    const d = state.design;
-    // プリセットは形だけを変え、楕円からのはみ出しはそのまま残す
-    for (const s of d.linked ? ['L', 'R'] : [d.side]) d.prm[s] = { ...pickShape(p), headOut: d.prm[s].headOut, tailOut: d.prm[s].tailOut };
-    d.preset = id; invalidateLayer(); syncControls(); saveDesign(); draw();
-  });
-  presetBox.appendChild(b);
+// 楕円の縦横比だけを変える。下端（上まぶたの高さ）は動かさない
+function setEllipseRatio(sides, ratio) {
+  if (!state.ellipse || !state.pts) return;
+  const { up } = faceAxes(state.pts);
+  for (const s of sides) {
+    const e = state.ellipse[s], b = e.a * ratio;
+    e.c = add(e.c, mul(up, b - e.b)); e.y1 *= b / e.b; e.b = b;
+  }
+}
+for (const group of [...new Set(Object.values(PRESETS).map(p => p.group))]) {
+  const row = document.createElement('div');
+  row.className = 'preset-row';
+  row.innerHTML = `<span class="preset-group">${group}</span>`;
+  for (const [id, p] of Object.entries(PRESETS).filter(([, p]) => p.group === group)) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.preset = id; b.textContent = p.name;
+    b.addEventListener('click', () => {
+      const d = state.design;
+      const sides = d.linked ? ['L', 'R'] : [d.side];
+      // プリセットは形・ふちのぼかし・楕円の縦横比を変え、楕円からのはみ出しはそのまま残す
+      for (const s of sides) d.prm[s] = { ...pickShape(p), headOut: d.prm[s].headOut, tailOut: d.prm[s].tailOut };
+      d.soft = p.soft;
+      setEllipseRatio(sides, p.ellRatio);
+      d.preset = id; invalidateLayer(); syncControls(); saveDesign(); draw();
+    });
+    row.appendChild(b);
+  }
+  presetBox.appendChild(row);
 }
 function syncPresets() {
-  for (const b of presetBox.children) b.setAttribute('aria-pressed', String(b.dataset.preset === state.design.preset));
+  for (const b of presetBox.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.preset === state.design.preset));
 }
 
 const swatchBox = document.getElementById('swatches');
